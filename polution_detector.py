@@ -1,4 +1,3 @@
-
 import os
 import torch
 import torch.nn as nn
@@ -34,9 +33,7 @@ class SegmentationDataset(Dataset):
         mask = (mask > 0.5).float()  # ensure binary mask
         return image, mask
 
-
 # Model
-
 class PollutionDetector(nn.Module):
     def __init__(self):
         super(PollutionDetector, self).__init__()
@@ -62,9 +59,7 @@ class PollutionDetector(nn.Module):
         x = torch.sigmoid(self.outconv(x))
         return x
 
-
 # Training
-
 def train_model(image_dir="data/images", mask_dir="data/masks"):
     transform = transforms.Compose([
         transforms.Resize((128,128)),
@@ -92,9 +87,7 @@ def train_model(image_dir="data/images", mask_dir="data/masks"):
     torch.save(model.state_dict(), "models/pollution_detector.pth")
     print("Model saved to models/pollution_detector.pth")
 
-
 # Prediction
-
 def predict_image(image_path):
     transform = transforms.Compose([
         transforms.Resize((128,128)),
