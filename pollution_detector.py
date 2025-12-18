@@ -1,116 +1,103 @@
-import os
+
+import requests
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
+from torch.utils.data import Dataset, DataLoader
 from PIL import Image
+from io import BytesIO
+import torchvision.transforms as T
+import torchvision
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
-# Custom Dataset
-
-class SegmentationDataset(Dataset):
-    def __init__(self, image_dir, mask_dir, transform=None):
-        self.image_dir = image_dir
-        self.mask_dir = mask_dir
+#Dataset
+class MarineDebrisSTACDataset(Dataset):
+    def __init__(self, stac_url, transform=None, api_key=None):
+        self.stac_url = stac_url
         self.transform = transform
-        self.images = sorted(os.listdir(image_dir))
-        self.masks = sorted(os.listdir(mask_dir))
+        self.api_key = api_key
+
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        # Query STAC API for items
+        response = requests.get(f"{stac_url}/items", headers=headers)
+        response.raise_for_status()
+        self.items = response.json()["features"]
 
     def __len__(self):
-        return len(self.images)
+        return len(self.items)
 
     def __getitem__(self, idx):
-        img_path = os.path.join(self.image_dir, self.images[idx])
-        mask_path = os.path.join(self.mask_dir, self.masks[idx])
+        item = self.items[idx]
 
-        image = Image.open(img_path).convert("RGB")
-        mask = Image.open(mask_path).convert("L")
+        # Get image URL
+        img_url = item["assets"]["image"]["href"]
+        img_response = requests.get(img_url)
+        img = Image.open(BytesIO(img_response.content)).convert("RGB")
+
+        # Get bounding boxes + labels
+        annotations = item["properties"]["annotations"]
+        boxes = torch.tensor([ann["bbox"] for ann in annotations], dtype=torch.float32)
+        labels = torch.tensor([ann["label_id"] for ann in annotations], dtype=torch.int64)
+
+        target = {"boxes": boxes, "labels": labels}
 
         if self.transform:
-            image = self.transform(image)
-            mask = self.transform(mask)
+            img = self.transform(img)
 
-        mask = (mask > 0.5).float()  # ensure binary mask
-        return image, mask
+        return img, target
+#Model
+def build_model(num_classes):
+    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+    return model
 
-# Model
-class PollutionDetector(nn.Module):
-    def __init__(self):
-        super(PollutionDetector, self).__init__()
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
-        self.pool1 = nn.MaxPool2d(2,2)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.pool2 = nn.MaxPool2d(2,2)
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+#Training
+def train_model(stac_url, api_key=None, num_classes=6):
+    transform = T.Compose([T.Resize((256,256)), T.ToTensor()])
+    dataset = MarineDebrisSTACDataset(stac_url, transform=transform, api_key=api_key)
+    loader = DataLoader(dataset, batch_size=4, shuffle=True, collate_fn=lambda x: tuple(zip(*x)))
 
-        self.deconv1 = nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.deconv2 = nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.outconv = nn.Conv2d(32, 1, kernel_size=1)
-
-    def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = self.pool1(x)
-        x = F.relu(self.conv2(x))
-        x = self.pool2(x)
-        x = F.relu(self.conv3(x))
-
-        x = F.relu(self.deconv1(x))
-        x = F.relu(self.deconv2(x))
-        x = torch.sigmoid(self.outconv(x))
-        return x
-
-# Training
-def train_model(image_dir="data/images", mask_dir="data/masks"):
-    transform = transforms.Compose([
-        transforms.Resize((128,128)),
-        transforms.ToTensor()
-    ])
-
-    dataset = SegmentationDataset(image_dir, mask_dir, transform=transform)
-    loader = DataLoader(dataset, batch_size=4, shuffle=True)
-
-    model = PollutionDetector()
+    model = build_model(num_classes)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = nn.BCELoss()
 
     model.train()
     for epoch in range(5):
-        for imgs, masks in loader:
+        for images, targets in loader:
+            images = list(img for img in images)
+            targets = list(tgt for tgt in targets)
+
+            loss_dict = model(images, targets)
+            losses = sum(loss for loss in loss_dict.values())
+
             optimizer.zero_grad()
-            outputs = model(imgs)
-            loss = criterion(outputs, masks)
-            loss.backward()
+            losses.backward()
             optimizer.step()
-        print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}")
+        print(f"Epoch {epoch+1}, Loss: {losses.item():.4f}")
 
-    os.makedirs("models", exist_ok=True)
-    torch.save(model.state_dict(), "models/pollution_detector.pth")
-    print("Model saved to models/pollution_detector.pth")
+    torch.save(model.state_dict(), "models/marine_debris_detector.pth")
+    print("Model saved to models/marine_debris_detector.pth")
 
-# Prediction
-def predict_image(image_path):
-    transform = transforms.Compose([
-        transforms.Resize((128,128)),
-        transforms.ToTensor()
-    ])
-
-    model = PollutionDetector()
-    model.load_state_dict(torch.load("models/pollution_detector.pth"))
+#Predictor
+def predict_image(image_url, num_classes=6, api_key=None):
+    model = build_model(num_classes)
+    model.load_state_dict(torch.load("models/marine_debris_detector.pth"))
     model.eval()
 
-    image = Image.open(image_path).convert("RGB")
-    image = transform(image).unsqueeze(0)  # add batch dimension
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    response = requests.get(image_url, headers=headers)
+    img = Image.open(BytesIO(response.content)).convert("RGB")
+    transform = T.Compose([T.Resize((256,256)), T.ToTensor()])
+    img = transform(img).unsqueeze(0)
 
     with torch.no_grad():
-        prediction = model(image)
-    print("Prediction mask shape:", prediction.shape)
+        prediction = model(img)
+
+    print("Predicted boxes:", prediction[0]["boxes"])
+    print("Predicted labels:", prediction[0]["labels"])
     return prediction
-
-# Main
-if __name__ == "__main__":
-    # Train on uploaded dataset
-    train_model("data/images", "data/masks")
-
-    # Run a test prediction
-    predict_image("data/images/example.png")
 
