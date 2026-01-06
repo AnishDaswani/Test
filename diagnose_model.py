@@ -1,7 +1,37 @@
 import os
+import sys
+import types
 import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
+
+# Provide a lightweight `cv2` stub to avoid importing the full native
+# OpenCV during Keras/TensorFlow import (Keras may import visualization
+# which imports `cv2` if available). The real `cv2` is useful for
+# overlays but its native import can hang startup; this stub implements
+# the tiny subset we need: `resize`, `addWeighted`, and `imwrite`.
+if 'cv2' not in sys.modules:
+    try:
+        from PIL import Image
+        cv2_stub = types.ModuleType('cv2')
+        def _resize(img, dsize):
+            # dsize is (width, height)
+            pil = Image.fromarray(img.astype('uint8'))
+            pil = pil.resize((int(dsize[0]), int(dsize[1])))
+            return np.array(pil)
+        def _addWeighted(src1, alpha, src2, beta, gamma):
+            out = (src1.astype('float32') * float(alpha) + src2.astype('float32') * float(beta) + float(gamma))
+            out = np.clip(out, 0, 255).astype('uint8')
+            return out
+        def _imwrite(path, arr):
+            Image.fromarray(arr.astype('uint8')).save(path)
+        cv2_stub.resize = _resize
+        cv2_stub.addWeighted = _addWeighted
+        cv2_stub.imwrite = _imwrite
+        sys.modules['cv2'] = cv2_stub
+    except Exception:
+        # If PIL isn't available, skip stub and allow real cv2 import to fail later
+        pass
 
 from ml_app import training_utils
 
@@ -26,33 +56,80 @@ def load_model():
 
 def grad_cam(model, img_tensor, class_index):
     import tensorflow as tf
-    # Simple Grad-CAM for Keras Sequential conv models
-    img = tf.convert_to_tensor(img_tensor[None,...], dtype=tf.float32)
-    last_conv_layer_name = None
-    for layer in reversed(model.layers):
-        if hasattr(layer, 'output') and len(getattr(layer, 'output').shape) == 4:
-            last_conv_layer_name = layer.name
-            break
-    if last_conv_layer_name is None:
-        raise RuntimeError('No conv layer found for Grad-CAM')
-    last_conv = model.get_layer(last_conv_layer_name)
+    # Simple Grad-CAM for Keras models. Find the last Conv2D layer,
+    # allowing for nested `Sequential`/`Model` containers.
+    img = tf.convert_to_tensor(img_tensor[None, ...], dtype=tf.float32)
 
-    grad_model = tf.keras.models.Model([
-        model.inputs], [last_conv.output, model.output])
+    def find_last_conv(model):
+        # search reversed top-level layers; be robust to differing Keras classes
+        def is_conv_layer(l):
+            if getattr(l, 'kernel', None) is not None:
+                return True
+            name = l.__class__.__name__.lower()
+            return 'conv' in name
+
+        for layer in reversed(model.layers):
+            if is_conv_layer(layer):
+                return layer
+            if isinstance(layer, (tf.keras.Model, tf.keras.Sequential)):
+                for sub in reversed(layer.layers):
+                    if is_conv_layer(sub):
+                        return sub
+        return None
+
+    last_conv = find_last_conv(model)
+    if last_conv is None:
+        raise RuntimeError('No Conv2D layer found for Grad-CAM')
+
+    # Ensure the model has been called so tensors are connected
+    _ = model.predict(img, verbose=0)
+
+    # Build the activation tensor for the located conv layer by applying
+    # layers symbolically to the model input. This avoids relying on
+    # `layer.output` which may be unset on some saved models.
+    x = model.inputs[0]
+    conv_tensor = None
+    for layer in model.layers:
+        x = layer(x)
+        if layer is last_conv or layer.name == last_conv.name:
+            conv_tensor = x
+            break
+    if conv_tensor is None:
+        # try searching nested containers
+        for layer in model.layers:
+            if isinstance(layer, (tf.keras.Model, tf.keras.Sequential)):
+                for sub in layer.layers:
+                    x = sub(x)
+                    if sub is last_conv or sub.name == last_conv.name:
+                        conv_tensor = x
+                        break
+                if conv_tensor is not None:
+                    break
+    if conv_tensor is None:
+        raise RuntimeError('Could not construct conv activation tensor for Grad-CAM')
+
+    grad_model = tf.keras.models.Model(inputs=model.inputs, outputs=[conv_tensor, model.output])
+
     with tf.GradientTape() as tape:
         conv_outputs, predictions = grad_model(img)
         loss = predictions[:, class_index]
     grads = tape.gradient(loss, conv_outputs)
-    pooled_grads = tf.reduce_mean(grads, axis=(0,1,2))
-    conv_outputs = conv_outputs[0]
-    heatmap = tf.reduce_sum(tf.multiply(pooled_grads, conv_outputs), axis=-1)
+    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+    conv_outputs = conv_outputs[0].numpy()
+    pooled_grads = pooled_grads.numpy()
+
+    heatmap = np.zeros(conv_outputs.shape[:2], dtype=np.float32)
+    for i in range(conv_outputs.shape[-1]):
+        heatmap += pooled_grads[i] * conv_outputs[:, :, i]
     heatmap = np.maximum(heatmap, 0)
-    heatmap /= (np.max(heatmap) + 1e-8)
+    if heatmap.max() > 0:
+        heatmap = heatmap / (heatmap.max() + 1e-8)
     heatmap = np.uint8(255 * heatmap)
-    heatmap = np.expand_dims(heatmap, axis=-1)
-    heatmap = np.repeat(heatmap, 3, axis=-1)
-    heatmap = np.array(plt.imresize(heatmap, (img_tensor.shape[0], img_tensor.shape[1]))) if hasattr(plt, 'imresize') else np.array(plt.imshow(heatmap, interpolation='bilinear').get_array())
-    return heatmap
+    # expand to 3 channels and resize to image size using cv2 (stub or real)
+    import cv2
+    heatmap_rgb = np.stack([heatmap, heatmap, heatmap], axis=-1)
+    heatmap_resized = cv2.resize(heatmap_rgb, (img_tensor.shape[1], img_tensor.shape[0]))
+    return heatmap_resized
 
 
 def save_gradcam_overlay(img, heatmap, out_path):
