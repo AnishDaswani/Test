@@ -49,13 +49,13 @@ pip install -r requirements.txt
 3. Run Django system checks:
 
 ```powershell
-.\.venv\Scripts\python3.12.exe manage.py check
+.\.venv\Scripts\python3.12 manage.py check
 ```
 
 4. Start the development server:
 
 ```powershell
-.\.venv\Scripts\python3.12.exe manage.py runserver
+.\.venv\Scripts\python3.12 manage.py runserver
 ```
 
 Notes
