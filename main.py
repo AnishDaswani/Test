@@ -37,10 +37,31 @@ def stac_search(collections):
         return json.loads(r.read())["features"]
 
 def decode_image(b):
+    # Use the repo's magic-byte detector to avoid sending unknown bytes to TF
     try:
-        img = tf.io.decode_jpeg(b, channels=3)
-    except:
-        img = tf.io.decode_png(b, channels=3)
+        from ml_app.training_utils import detect_image_format
+    except Exception:
+        detect_image_format = None
+
+    if detect_image_format is not None:
+        fmt = detect_image_format(b)
+        if fmt is None:
+            raise ValueError("Unknown image file format. One of JPEG, PNG, GIF, BMP, WebP required.")
+    else:
+        fmt = None
+
+    # JPEG2000 (jp2) support via PIL; other supported types use TF's decoder
+    if fmt == 'jp2':
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(b))
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        img = img.resize(IMG_SIZE, Image.Resampling.LANCZOS)
+        return np.array(img, dtype=np.uint8)
+
+    # Fallback to TensorFlow's generic decoder for common formats
+    img = tf.io.decode_image(b, channels=3, expand_animations=False)
     img = tf.image.resize(img, IMG_SIZE)
     return img.numpy().astype(np.uint8)
 

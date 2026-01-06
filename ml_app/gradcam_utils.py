@@ -8,22 +8,39 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 
 def build_gradcam_model(model, input_shape):
-    """Build a model that returns both the last conv layer output and predictions."""
-    inp = tf.keras.Input(shape=input_shape)
-    x = inp
-    last_conv_output = None
+    """Build a model that returns both the last conv layer output and predictions.
 
-    for layer in model.layers:
-        if isinstance(layer, tf.keras.layers.InputLayer):
-            continue
-        x = layer(x)
-        if isinstance(layer, tf.keras.layers.Conv2D):
-            last_conv_output = x
-
-    if last_conv_output is None:
+    This implementation is safer for Sequential and Functional models: it locates
+    the last Conv2D layer in the provided model and reuses the model's inputs
+    to build a grad-model that exposes the conv output and the final predictions.
+    """
+    # Find the last Conv2D layer in the model
+    conv_layers = [l for l in model.layers if isinstance(l, tf.keras.layers.Conv2D)]
+    if not conv_layers:
         raise ValueError("No Conv2D layer found in the model for Grad-CAM.")
 
-    grad_model = tf.keras.Model(inputs=inp, outputs=[last_conv_output, x])
+    last_conv = conv_layers[-1]
+
+    # Use the existing model inputs and outputs to build a grad model
+    try:
+        grad_model = tf.keras.Model(inputs=model.inputs, outputs=[last_conv.output, model.output])
+    except Exception:
+        # Fallback: build a new input and try to recreate the forward pass
+        inp = tf.keras.Input(shape=input_shape)
+        x = inp
+        last_conv_output = None
+        for layer in model.layers:
+            if isinstance(layer, tf.keras.layers.InputLayer):
+                continue
+            x = layer(x)
+            if isinstance(layer, tf.keras.layers.Conv2D):
+                last_conv_output = x
+
+        if last_conv_output is None:
+            raise ValueError("Failed to build grad model: no Conv2D layer found.")
+
+        grad_model = tf.keras.Model(inputs=inp, outputs=[last_conv_output, x])
+
     return grad_model
 
 def make_gradcam_heatmap(img_array, model, img_size=(96, 96)):
@@ -33,11 +50,18 @@ def make_gradcam_heatmap(img_array, model, img_size=(96, 96)):
     
     if img_array.max() > 1.0:
         img_array = img_array / 255.0
-    
     grad_model = build_gradcam_model(model, (img_size[0], img_size[1], 3))
-    
+
+    # Ensure batch dimension is present
+    if img_array.ndim == 3:
+        img_batch = np.expand_dims(img_array, axis=0)
+    else:
+        img_batch = img_array
+
+    img_batch_tf = tf.convert_to_tensor(img_batch)
+
     with tf.GradientTape() as tape:
-        conv_outputs, predictions = grad_model(img_array)
+        conv_outputs, predictions = grad_model(img_batch_tf)
         pred_index = tf.argmax(predictions[0])
         class_channel = predictions[:, pred_index]
 
@@ -45,9 +69,12 @@ def make_gradcam_heatmap(img_array, model, img_size=(96, 96)):
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
 
     conv_outputs = conv_outputs[0]
-    heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
-    heatmap = tf.squeeze(heatmap)
-    heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-9)
+    # Weighted combination of feature maps and pooled gradients
+    weighted_maps = conv_outputs * pooled_grads[tf.newaxis, tf.newaxis, :]
+    heatmap = tf.reduce_sum(weighted_maps, axis=-1)
+    heatmap = tf.maximum(heatmap, 0)
+    max_val = tf.math.reduce_max(heatmap)
+    heatmap = heatmap / (max_val + 1e-9)
     return heatmap.numpy()
 
 def overlay_gradcam_on_image(img_uint8, heatmap, alpha=0.5, cmap='jet'):

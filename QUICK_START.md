@@ -9,13 +9,13 @@ pip install -r requirements.txt
 ## Step 2: Run migrations (first time only)
 
 ```bash
-python manage.py migrate
+python3.12 manage.py migrate
 ```
 
 ## Step 3: Start the server
 
 ```bash
-python manage.py runserver
+python3.12 manage.py runserver
 ```
 
 Or use the script:
@@ -48,5 +48,5 @@ If you see "Page not found":
 If CSS doesn't load:
 - The page should still show content, just without styling
 - Make sure DEBUG = True in settings.py (it should be)
-- Try: python manage.py collectstatic
+- Try: python3.12 manage.py collectstatic
 

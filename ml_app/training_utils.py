@@ -4,7 +4,9 @@ import urllib.request
 import urllib.error
 import random
 import numpy as np
-import tensorflow as tf
+import logging
+
+logger = logging.getLogger(__name__)
 
 IMG_SIZE = (96, 96)
 
@@ -81,42 +83,82 @@ def fetch_bytes(url, max_retries=2):
                 is_png = data[:4] == b'\x89PNG'
                 is_gif = data[:6] in [b'GIF87a', b'GIF89a']
                 is_bmp = data[:2] == b'BM'
-                is_jp2 = len(data) >= 12 and data[4:8] == b'jP  ' or (len(data) >= 12 and data[:4] == b'\x00\x00\x00\x0c' and data[4:8] == b'jP  ')
+                is_jp2 = (
+                    (len(data) >= 12 and data[4:8] == b'jP  ') or
+                    (len(data) >= 12 and data[:4] == b'\x00\x00\x00\x0c' and data[4:8] == b'jP  ')
+                )
                 
                 if is_jp2:
                     return data
-                
+
                 if is_jpeg or is_png or is_gif or is_bmp:
                     return data
                 else:
+                    logger.warning("fetch_bytes: unsupported image format at URL: %s", url)
                     return None
         except Exception as e:
-            if attempt < max_retries: 
+            logger.debug("fetch_bytes attempt %s failed for %s: %s", attempt, url, str(e))
+            if attempt < max_retries:
                 import time
                 time.sleep(0.75)
             else:
                 return None
     return None
 
+
+def detect_image_format(img_bytes: bytes) -> str | None:
+    """Return image format string if bytes match a supported image format.
+
+    Supported formats: jpeg, png, gif, bmp, webp, jp2
+    Returns None when format is unknown.
+    """
+    if not img_bytes or len(img_bytes) < 4:
+        return None
+
+    if img_bytes[:3] == b'\xff\xd8\xff':
+        return 'jpeg'
+    if img_bytes[:4] == b'\x89PNG':
+        return 'png'
+    if img_bytes[:6] in (b'GIF87a', b'GIF89a'):
+        return 'gif'
+    if img_bytes[:2] == b'BM':
+        return 'bmp'
+    # WebP: 'RIFF'....'WEBP'
+    if len(img_bytes) >= 12 and img_bytes[:4] == b'RIFF' and img_bytes[8:12] == b'WEBP':
+        return 'webp'
+    # JPEG2000 common signatures
+    if (len(img_bytes) >= 12 and img_bytes[4:8] == b'jP  ') or (len(img_bytes) >= 12 and img_bytes[:4] == b'\x00\x00\x00\x0c' and img_bytes[4:8] == b'jP  '):
+        return 'jp2'
+
+    return None
+
 def decode_image_to_uint8(img_bytes):
     """Decode image bytes to uint8 array with robust error handling."""
+    fmt = detect_image_format(img_bytes)
+    if fmt is None:
+        logger.debug("Unknown image format based on magic bytes; rejecting.")
+        return None
+
     try:
+        import tensorflow as tf
         img = tf.io.decode_image(img_bytes, channels=3, expand_animations=False)
         return tf.image.resize(img, IMG_SIZE, method="bilinear").numpy().astype(np.uint8)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("tf.decode_image failed: %s", str(e))
     
     try:
+        import tensorflow as tf
         img = tf.io.decode_jpeg(img_bytes, channels=3, dct_method='INTEGER_FAST')
         return tf.image.resize(img, IMG_SIZE, method="bilinear").numpy().astype(np.uint8)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("tf.decode_jpeg failed: %s", str(e))
     
     try:
+        import tensorflow as tf
         img = tf.io.decode_png(img_bytes, channels=3)
         return tf.image.resize(img, IMG_SIZE, method="bilinear").numpy().astype(np.uint8)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("tf.decode_png failed: %s", str(e))
     
     try:
         from PIL import Image
@@ -127,8 +169,8 @@ def decode_image_to_uint8(img_bytes):
         img = img.resize(IMG_SIZE, Image.Resampling.LANCZOS)
         img_array = np.array(img, dtype=np.uint8)
         return img_array
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("PIL decode failed: %s", str(e))
     
     return None
 
@@ -138,17 +180,20 @@ def build_preview_dataset(collections, bbox, datetime_range, page_limit=100):
     features = stac_search_paginated(API_SEARCH, collections, bbox, datetime_range, page_limit=page_limit, max_pages=10)
     imgs = []
     skipped_count = 0
+    skipped_urls = []
     for feat in features:
         urls = collect_preview_assets(feat)
         random.shuffle(urls)
         for u in urls[:1]:
             b = fetch_bytes(u)
-            if b is None: 
+            if b is None:
                 skipped_count += 1
+                skipped_urls.append((u, 'fetch_failed_or_unsupported_format'))
                 continue
             arr = decode_image_to_uint8(b)
             if arr is None:
                 skipped_count += 1
+                skipped_urls.append((u, 'decode_failed_unknown_format'))
                 continue
             imgs.append(arr)
     
@@ -159,10 +204,25 @@ def build_preview_dataset(collections, bbox, datetime_range, page_limit=100):
         print(f"Note: Skipped {skipped_count} unsupported image format(s) (e.g., JPEG2000)")
     
     X = np.stack(imgs, axis=0)
+    # Persist skipped URLs for later review
+    try:
+        import pathlib
+        out_dir = os.path.join(os.getcwd(), 'plots')
+        pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
+        log_path = os.path.join(out_dir, 'skipped_assets.log')
+        if skipped_urls:
+            with open(log_path, 'a', encoding='utf-8') as fh:
+                for u, reason in skipped_urls:
+                    fh.write(f"{u}\t{reason}\n")
+            logger.warning("Wrote %d skipped asset records to %s", len(skipped_urls), log_path)
+    except Exception as e:
+        logger.debug("Failed to write skipped_assets.log: %s", str(e))
+
     return X
 
 def haze_proxy_labels(X_uint8):
     """Generate haze proxy labels."""
+    import tensorflow as tf
     x = tf.convert_to_tensor(X_uint8, dtype=tf.float32) / 255.0
     gray = tf.image.rgb_to_grayscale(x)
     sob = tf.image.sobel_edges(gray)
@@ -176,6 +236,8 @@ def haze_proxy_labels(X_uint8):
 def build_model(input_shape=(96, 96, 3), num_classes=2, learning_rate=0.001, 
                 optimizer='adam', dropout_rate=0.2):
     """Build the CNN model with customizable parameters."""
+    import tensorflow as tf
+
     data_augmentation = tf.keras.Sequential([
         tf.keras.layers.RandomFlip('horizontal'),
         tf.keras.layers.RandomRotation(0.05),
@@ -193,7 +255,7 @@ def build_model(input_shape=(96, 96, 3), num_classes=2, learning_rate=0.001,
         tf.keras.layers.MaxPooling2D(),
         tf.keras.layers.Conv2D(128, 3, padding='same', activation='relu'),
         tf.keras.layers.MaxPooling2D(),
-        tf.keras.layers.Flatten(),
+        tf.keras.layers.GlobalAveragePooling2D(),
         tf.keras.layers.Dropout(dropout_rate),
         tf.keras.layers.Dense(64, activation='relu'),
         tf.keras.layers.Dense(num_classes, activation='softmax')
@@ -215,7 +277,8 @@ def build_model(input_shape=(96, 96, 3), num_classes=2, learning_rate=0.001,
 
 def make_tf_ds(x, y, batch=64, shuffle=True):
     """Create TensorFlow dataset."""
+    import tensorflow as tf
     ds = tf.data.Dataset.from_tensor_slices((x, y))
-    if shuffle: 
+    if shuffle:
         ds = ds.shuffle(len(x), seed=42)
     return ds.batch(batch).prefetch(tf.data.AUTOTUNE)

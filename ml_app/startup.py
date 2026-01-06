@@ -10,14 +10,24 @@ logger = logging.getLogger(__name__)
 def initialize_model_and_data():
     """Initialize the model and generate plots by running main.py logic. Always runs, even if files exist."""
     try:
-        print("🚀 Starting model initialization...")
-        logger.info("🚀 Starting model initialization...")
+        print(" Starting model initialization...")
+        logger.info(" Starting model initialization...")
         
-        print("🔧 Running main.py to train model and generate plots...")
+        print(" Running main.py to train model and generate plots...")
         print("   This may take a few minutes...")
-        logger.info("🔧 Running main.py to train model and generate plots...")
+        logger.info(" Running main.py to train model and generate plots...")
         
         import threading
+
+        # If TensorFlow is not installed, skip auto initialization to avoid
+        # failing app startup on systems without heavy ML deps installed.
+        try:
+            import importlib
+            importlib.import_module('tensorflow')
+        except Exception:
+            print("⚠️ TensorFlow not available; skipping automatic model initialization.")
+            logger.warning("TensorFlow not available; skipping automatic model initialization.")
+            return
         
         def run_main():
             try:
@@ -38,11 +48,11 @@ def initialize_model_and_data():
                 
                 spec.loader.exec_module(main_module)
                 
-                print("✓ Model training and plot generation completed!")
-                logger.info("✓ Model training and plot generation completed!")
+                print(" Model training and plot generation completed!")
+                logger.info(" Model training and plot generation completed!")
                 
             except Exception as e:
-                error_msg = f"❌ Error running main.py: {str(e)}"
+                error_msg = f" Error running main.py: {str(e)}"
                 print(error_msg)
                 logger.error(error_msg)
                 import traceback

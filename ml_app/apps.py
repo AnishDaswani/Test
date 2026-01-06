@@ -14,5 +14,5 @@ class MlAppConfig(AppConfig):
         
         from ml_app import startup
         
-        logger.info("🌍 Pollution Detector App Starting...")
+        logger.info("Pollution Detector App Starting...")
         startup.initialize_model_and_data()

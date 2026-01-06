@@ -1,7 +1,6 @@
 import os
 import shutil
 import numpy as np
-import tensorflow as tf
 from django.shortcuts import render
 from django.conf import settings
 from django.http import JsonResponse, Http404
@@ -12,7 +11,6 @@ import io
 import logging
 import matplotlib
 matplotlib.use('Agg')
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 IMG_SIZE = (96, 96)
 CLASS_NAMES = ["clear", "pollution_like"]
@@ -31,13 +29,15 @@ def sync_plots():
         os.makedirs(PLOTS_MEDIA_DIR, exist_ok=True)
         if os.path.exists(PLOTS_DIR):
             for plot_file in os.listdir(PLOTS_DIR):
-                if plot_file.endswith('.png'):
-                    src = os.path.join(PLOTS_DIR, plot_file)
-                    dst = os.path.join(PLOTS_MEDIA_DIR, plot_file)
-                    if not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst):
-                        shutil.copy2(src, dst)
-    except Exception:
-        pass
+                if not plot_file.endswith('.png'):
+                    continue
+                src = os.path.join(PLOTS_DIR, plot_file)
+                dst = os.path.join(PLOTS_MEDIA_DIR, plot_file)
+                if not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst):
+                    shutil.copy2(src, dst)
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.exception("Failed to sync plots: %s", str(e))
 
 _model = None
 
@@ -47,7 +47,21 @@ def get_model():
     if _model is None:
         MODEL_PATH, _, _ = get_paths()
         if os.path.exists(MODEL_PATH):
-            _model = tf.keras.models.load_model(MODEL_PATH)
+            try:
+                import os as _os
+                os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+                import tensorflow as tf
+            except Exception:
+                logger = logging.getLogger(__name__)
+                logger.warning("TensorFlow not available; model cannot be loaded.")
+                _model = None
+                return _model
+
+            try:
+                # Avoid loading training artifacts; compile not required for inference
+                _model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+            except Exception:
+                _model = tf.keras.models.load_model(MODEL_PATH)
         else:
             _model = None
     return _model
@@ -113,41 +127,58 @@ def predict_upload(request):
     try:
         image_file = request.FILES['image']
         image_data = image_file.read()
-        
+
+        img_array = None
+
+        # First try PIL (fast, small dependency)
         try:
             img = Image.open(io.BytesIO(image_data))
             if img.mode != 'RGB':
                 img = img.convert('RGB')
             img = img.resize(IMG_SIZE, Image.Resampling.LANCZOS)
             img_array = np.array(img, dtype=np.uint8)
-            
-            if len(img_array.shape) != 3 or img_array.shape[2] != 3:
+            if img_array.ndim != 3 or img_array.shape[2] != 3:
                 raise ValueError(f"Invalid image shape: {img_array.shape}. Expected (H, W, 3)")
-                
-        except Exception as e:
+        except Exception as pil_err:
+            # PIL failed — attempt TensorFlow fallback after a quick magic-bytes check
+            detect_image_format = None
             try:
-                img_bytes = tf.constant(image_data)
+                from ml_app.training_utils import detect_image_format
+            except Exception:
+                detect_image_format = None
+
+            if detect_image_format is not None:
+                fmt = detect_image_format(image_data)
+                if fmt is None:
+                    logger = logging.getLogger(__name__)
+                    logger.warning("predict_upload: unknown image format uploaded from client %s", request.META.get('REMOTE_ADDR'))
+                    raise ValueError("Unknown image file format. One of JPEG, PNG, GIF, BMP, WebP required.")
+
+            try:
+                import tensorflow as tf
+            except Exception as tf_import_err:
+                raise ValueError(f"Unsupported image format and TensorFlow is not installed: {tf_import_err}") from pil_err
+
+            img_bytes = tf.constant(image_data)
+            decode_attempts = []
+            try:
+                img_tf = tf.io.decode_jpeg(img_bytes, channels=3, dct_method='INTEGER_FAST')
+            except Exception as e1:
+                decode_attempts.append(str(e1))
                 try:
-                    img_tf = tf.io.decode_jpeg(img_bytes, channels=3, dct_method='INTEGER_FAST')
-                except Exception:
+                    img_tf = tf.io.decode_png(img_bytes, channels=3)
+                except Exception as e2:
+                    decode_attempts.append(str(e2))
                     try:
-                        img_tf = tf.io.decode_png(img_bytes, channels=3)
-                    except Exception:
-                        try:
-                            img_tf = tf.io.decode_image(img_bytes, channels=3, expand_animations=False)
-                        except Exception:
-                            raise ValueError(f"Unsupported image format. Error: {str(e)}")
-                
-                img_tf = tf.image.resize(img_tf, IMG_SIZE, method="bilinear")
-                img_array = img_tf.numpy().astype(np.uint8)
-                
-            except Exception as tf_e:
-                raise ValueError(
-                    f"Could not decode image. Please ensure it's a valid JPEG, PNG, GIF, or BMP. "
-                    f"PIL error: {str(e)}, TensorFlow error: {str(tf_e)}"
-                )
+                        img_tf = tf.io.decode_image(img_bytes, channels=3, expand_animations=False)
+                    except Exception as e3:
+                        decode_attempts.append(str(e3))
+                        raise ValueError(f"Unsupported image format. PIL error: {pil_err}, TF decode errors: {' | '.join(decode_attempts)}")
+
+            img_tf = tf.image.resize(img_tf, IMG_SIZE, method="bilinear")
+            img_array = img_tf.numpy().astype(np.uint8)
         
-        if len(img_array.shape) == 2:
+        if img_array.ndim == 2:
             img_array = np.stack([img_array] * 3, axis=-1)
         elif img_array.shape[-1] != 3:
             raise ValueError(f"Unexpected image shape: {img_array.shape}")
