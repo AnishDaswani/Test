@@ -156,11 +156,9 @@ x_test, y_test   = X_all[idx[va:]], y_all[idx[va:]]
 
 # ---------------- MODEL WITH POLLUTION BIAS ----------------
 augment = tf.keras.Sequential([
-    tf.keras.layers.RandomFlip("horizontal"),
-    tf.keras.layers.RandomFlip("vertical"),
+    tf.keras.layers.RandomFlip("horizontal_and_vertical"),
     tf.keras.layers.RandomRotation(0.1),
     tf.keras.layers.RandomContrast(0.2),
-    tf.keras.layers.RandomBrightness(0.1),
 ])
 
 model = tf.keras.Sequential([

@@ -39,14 +39,20 @@ def initialize_model_and_data():
                     return
                 
                 import importlib.util
-                spec = importlib.util.spec_from_file_location("main", main_py_path)
-                main_module = importlib.util.module_from_spec(spec)
-                
+                # Ensure the project base is on sys.path before creating/executing the spec
                 base_dir_str = str(settings.BASE_DIR)
                 if base_dir_str not in sys.path:
                     sys.path.insert(0, base_dir_str)
-                
-                spec.loader.exec_module(main_module)
+
+                spec = importlib.util.spec_from_file_location("main", main_py_path)
+                # If spec or its loader couldn't be created, fallback to runpy to execute the file
+                if spec is None or getattr(spec, 'loader', None) is None:
+                    import runpy
+                    logger.warning("importlib could not create a loader for main.py; falling back to runpy.run_path")
+                    runpy.run_path(main_py_path, run_name="__main__")
+                else:
+                    main_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(main_module)
                 
                 print(" Model training and plot generation completed!")
                 logger.info(" Model training and plot generation completed!")
