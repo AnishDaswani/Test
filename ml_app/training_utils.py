@@ -220,65 +220,187 @@ def build_preview_dataset(collections, bbox, datetime_range, page_limit=100):
 
     return X
 
-def haze_proxy_labels(X_uint8):
-    """Generate haze proxy labels."""
+def haze_proxy_labels(X_uint8, percentile_threshold=50.0):
+    """
+    Generate haze/pollution proxy labels using edge detection and image analysis.
+    
+    Uses Sobel edge detection to measure image clarity. Images with lower edge
+    density (more uniform/hazy) are labeled as pollution-like.
+    
+    Args:
+        X_uint8: Numpy array of images in uint8 format (N, H, W, 3)
+        percentile_threshold: Percentile threshold for labeling (default: 50.0)
+        
+    Returns:
+        y: Binary labels (0=clear, 1=pollution_like)
+        density: Edge density scores for each image
+        threshold: Threshold value used for labeling
+    """
     import tensorflow as tf
+    
+    # Normalize to [0, 1] range
     x = tf.convert_to_tensor(X_uint8, dtype=tf.float32) / 255.0
+    
+    # Convert to grayscale for edge detection
     gray = tf.image.rgb_to_grayscale(x)
+    
+    # Apply Sobel edge detection to detect image clarity
     sob = tf.image.sobel_edges(gray)
     gx, gy = sob[..., 0], sob[..., 1]
-    mag = tf.sqrt(tf.square(gx) + tf.square(gy))
-    density = tf.reduce_mean(mag, axis=[1,2,3]).numpy()
-    thresh = np.median(density)
-    y = (density < thresh).astype(np.int64)
-    return y, density, thresh
+    
+    # Calculate edge magnitude (clarity metric)
+    mag = tf.sqrt(tf.square(gx) + tf.square(gy) + 1e-8)  # Add epsilon for stability
+    
+    # Average edge density per image (higher = clearer)
+    density = tf.reduce_mean(mag, axis=[1, 2, 3]).numpy()
+    
+    # Use percentile threshold for more robust labeling
+    threshold = np.percentile(density, percentile_threshold)
+    
+    # Label images with lower edge density as pollution-like
+    y = (density < threshold).astype(np.int64)
+    
+    logger.info(f"Generated labels: {np.sum(y)} pollution-like ({100*np.sum(y)/len(y):.1f}%), "
+                f"{len(y)-np.sum(y)} clear ({100*(len(y)-np.sum(y))/len(y):.1f}%)")
+    
+    return y, density, threshold
 
 def build_model(input_shape=(96, 96, 3), num_classes=2, learning_rate=0.001, 
                 optimizer='adam', dropout_rate=0.2):
-    """Build the CNN model with customizable parameters."""
+    """
+    Build optimized CNN model for pollution detection with customizable parameters.
+    
+    Architecture:
+    - Data augmentation layer for improved generalization
+    - 3-layer convolutional block with batch normalization
+    - Global average pooling for parameter efficiency
+    - Dense layers with dropout for regularization
+    
+    Args:
+        input_shape: Shape of input images (H, W, C)
+        num_classes: Number of output classes (default: 2)
+        learning_rate: Initial learning rate for optimizer
+        optimizer: Optimizer name ('adam', 'sgd', 'rmsprop')
+        dropout_rate: Dropout rate for regularization (0.0-1.0)
+        
+    Returns:
+        Compiled Keras model ready for training
+    """
     import tensorflow as tf
 
+    # Data augmentation for improved generalization
     data_augmentation = tf.keras.Sequential([
         tf.keras.layers.RandomFlip('horizontal'),
         tf.keras.layers.RandomRotation(0.05),
         tf.keras.layers.RandomContrast(0.1),
         tf.keras.layers.RandomTranslation(0.05, 0.05),
+        tf.keras.layers.RandomBrightness(0.1),
     ], name="augmentation")
 
-    model = tf.keras.Sequential([
-        tf.keras.layers.Input(shape=input_shape),
-        data_augmentation,
-        tf.keras.layers.Rescaling(1./255),
-        tf.keras.layers.Conv2D(32, 3, padding='same', activation='relu'),
-        tf.keras.layers.MaxPooling2D(),
-        tf.keras.layers.Conv2D(64, 3, padding='same', activation='relu'),
-        tf.keras.layers.MaxPooling2D(),
-        tf.keras.layers.Conv2D(128, 3, padding='same', activation='relu'),
-        tf.keras.layers.MaxPooling2D(),
-        tf.keras.layers.GlobalAveragePooling2D(),
-        tf.keras.layers.Dropout(dropout_rate),
-        tf.keras.layers.Dense(64, activation='relu'),
-        tf.keras.layers.Dense(num_classes, activation='softmax')
-    ])
+    # Build optimized CNN architecture
+    inputs = tf.keras.layers.Input(shape=input_shape, name='input')
     
+    # Apply augmentation
+    x = data_augmentation(inputs)
+    
+    # Normalize pixel values
+    x = tf.keras.layers.Rescaling(1./255)(x)
+    
+    # First convolutional block
+    x = tf.keras.layers.Conv2D(32, 3, padding='same', activation='relu', name='conv1_1')(x)
+    x = tf.keras.layers.BatchNormalization(name='bn1')(x)
+    x = tf.keras.layers.Conv2D(32, 3, padding='same', activation='relu', name='conv1_2')(x)
+    x = tf.keras.layers.MaxPooling2D(pool_size=2, name='pool1')(x)
+    x = tf.keras.layers.Dropout(dropout_rate * 0.5, name='dropout1')(x)
+    
+    # Second convolutional block
+    x = tf.keras.layers.Conv2D(64, 3, padding='same', activation='relu', name='conv2_1')(x)
+    x = tf.keras.layers.BatchNormalization(name='bn2')(x)
+    x = tf.keras.layers.Conv2D(64, 3, padding='same', activation='relu', name='conv2_2')(x)
+    x = tf.keras.layers.MaxPooling2D(pool_size=2, name='pool2')(x)
+    x = tf.keras.layers.Dropout(dropout_rate * 0.5, name='dropout2')(x)
+    
+    # Third convolutional block
+    x = tf.keras.layers.Conv2D(128, 3, padding='same', activation='relu', name='conv3_1')(x)
+    x = tf.keras.layers.BatchNormalization(name='bn3')(x)
+    x = tf.keras.layers.Conv2D(128, 3, padding='same', activation='relu', name='conv3_2')(x)
+    x = tf.keras.layers.MaxPooling2D(pool_size=2, name='pool3')(x)
+    x = tf.keras.layers.Dropout(dropout_rate, name='dropout3')(x)
+    
+    # Global average pooling (more parameter-efficient than flatten + dense)
+    x = tf.keras.layers.GlobalAveragePooling2D(name='global_avg_pool')(x)
+    
+    # Classification head
+    x = tf.keras.layers.Dense(128, activation='relu', name='fc1')(x)
+    x = tf.keras.layers.BatchNormalization(name='bn_fc')(x)
+    x = tf.keras.layers.Dropout(dropout_rate, name='dropout_fc')(x)
+    x = tf.keras.layers.Dense(64, activation='relu', name='fc2')(x)
+    outputs = tf.keras.layers.Dense(num_classes, activation='softmax', name='output')(x)
+    
+    model = tf.keras.Model(inputs=inputs, outputs=outputs, name='pollution_detector_cnn')
+    
+    # Configure optimizer with learning rate scheduling support
     if optimizer.lower() == 'adam':
-        opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        opt = tf.keras.optimizers.Adam(learning_rate=learning_rate, beta_1=0.9, beta_2=0.999)
     elif optimizer.lower() == 'sgd':
-        opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=0.9)
+        opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=0.9, nesterov=True)
     elif optimizer.lower() == 'rmsprop':
-        opt = tf.keras.optimizers.RMSprop(learning_rate=learning_rate)
+        opt = tf.keras.optimizers.RMSprop(learning_rate=learning_rate, rho=0.9)
     else:
+        logger.warning(f"Unknown optimizer '{optimizer}', defaulting to Adam")
         opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
     
-    model.compile(optimizer=opt,
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
+    # Compile model with appropriate loss and metrics
+    model.compile(
+        optimizer=opt,
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy', tf.keras.metrics.Precision(name='precision'),
+                 tf.keras.metrics.Recall(name='recall')]
+    )
+    
+    logger.info(f"Built model with {model.count_params():,} parameters")
     return model
 
-def make_tf_ds(x, y, batch=64, shuffle=True):
-    """Create TensorFlow dataset."""
+def make_tf_ds(x, y, batch=64, shuffle=True, buffer_size=None):
+    """
+    Create optimized TensorFlow dataset with prefetching and caching.
+    
+    Args:
+        x: Input features (numpy array)
+        y: Labels (numpy array)
+        batch: Batch size for training
+        shuffle: Whether to shuffle the dataset
+        buffer_size: Buffer size for shuffling (default: len(x) or 1000, whichever is smaller)
+        
+    Returns:
+        Optimized tf.data.Dataset ready for training
+    """
     import tensorflow as tf
+    
+    # Validate inputs
+    if len(x) != len(y):
+        raise ValueError(f"Input and label arrays must have same length: {len(x)} != {len(y)}")
+    
+    if buffer_size is None:
+        buffer_size = min(len(x), 1000) if shuffle else None
+    
+    # Create dataset
     ds = tf.data.Dataset.from_tensor_slices((x, y))
-    if shuffle:
-        ds = ds.shuffle(len(x), seed=42)
-    return ds.batch(batch).prefetch(tf.data.AUTOTUNE)
+    
+    # Shuffle with appropriate buffer size
+    if shuffle and buffer_size:
+        ds = ds.shuffle(buffer_size=buffer_size, seed=42, reshuffle_each_iteration=True)
+    
+    # Batch with drop remainder for consistent batch sizes (optional for training)
+    ds = ds.batch(batch, drop_remainder=False)
+    
+    # Prefetch for optimal performance
+    ds = ds.prefetch(buffer_size=tf.data.AUTOTUNE)
+    
+    # Cache for repeated iterations (useful for validation/test sets)
+    if not shuffle:
+        ds = ds.cache()
+    
+    logger.debug(f"Created dataset: {len(x)} samples, batch_size={batch}, shuffle={shuffle}")
+    
+    return ds

@@ -136,14 +136,14 @@
     </style>
 </head>
 <body>
-    <nav class="navbar">
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
         <div class="container">
-            <h1 class="logo">🌍 Pollution Detector</h1>
-            <ul class="nav-links">
-                <li><a href="{% url 'index' %}">Home</a></li>
-                <li><a href="{% url 'graphs' %}">Graphs & Visualizations</a></li>
-                <li><a href="{% url 'predict' %}">Predict</a></li>
-                <li><a href="{% url 'train' %}" class="active">Train</a></li>
+            <h1 class="logo" aria-label="Pollution Detector">🌍 Pollution Detector</h1>
+            <ul class="nav-links" role="menubar">
+                <li role="none"><a href="{% url 'index' %}" role="menuitem">Home</a></li>
+                <li role="none"><a href="{% url 'graphs' %}" role="menuitem">Graphs & Visualizations</a></li>
+                <li role="none"><a href="{% url 'predict' %}" role="menuitem">Predict</a></li>
+                <li role="none"><a href="{% url 'train' %}" class="active" role="menuitem" aria-current="page">Train</a></li>
             </ul>
         </div>
     </nav>
@@ -325,7 +325,7 @@
 
     <footer>
         <div class="container">
-            <p>&copy; 2024 Pollution Detector. Built with Django & TensorFlow.</p>
+            <p>&copy; 2026 Pollution Detector. Built with Django & TensorFlow by Anish Daswani and Shanmuka Gottimukala.</p>
         </div>
     </footer>
 

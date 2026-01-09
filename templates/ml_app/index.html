@@ -8,14 +8,14 @@
     <link rel="stylesheet" href="{% static 'ml_app/css/style.css' %}">
 </head>
 <body>
-    <nav class="navbar">
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
         <div class="container">
-            <h1 class="logo">🌍 Pollution Detector</h1>
-            <ul class="nav-links">
-                <li><a href="{% url 'index' %}" class="active">Home</a></li>
-                <li><a href="{% url 'graphs' %}">Graphs & Visualizations</a></li>
-                <li><a href="{% url 'predict' %}">Predict</a></li>
-                <li><a href="{% url 'train' %}">Train</a></li>
+            <h1 class="logo" aria-label="Pollution Detector">🌍 Pollution Detector</h1>
+            <ul class="nav-links" role="menubar">
+                <li role="none"><a href="{% url 'index' %}" class="active" role="menuitem" aria-current="page">Home</a></li>
+                <li role="none"><a href="{% url 'graphs' %}" role="menuitem">Graphs & Visualizations</a></li>
+                <li role="none"><a href="{% url 'predict' %}" role="menuitem">Predict</a></li>
+                <li role="none"><a href="{% url 'train' %}" role="menuitem">Train</a></li>
             </ul>
         </div>
     </nav>
@@ -41,21 +41,18 @@
 
         <div class="features-grid">
             <div class="feature-card">
-                <div class="feature-icon">📊</div>
                 <h3>View Graphs</h3>
                 <p>Explore training curves, confusion matrices, Grad-CAM visualizations, and more.</p>
                 <a href="{% url 'graphs' %}" class="btn btn-primary">View Graphs</a>
             </div>
 
             <div class="feature-card">
-                <div class="feature-icon">🔮</div>
                 <h3>Make Predictions</h3>
                 <p>Upload satellite images to classify them as clear or pollution-like.</p>
                 <a href="{% url 'predict' %}" class="btn btn-primary">Try Prediction</a>
             </div>
 
             <div class="feature-card">
-                <div class="feature-icon">🎯</div>
                 <h3>Train Model</h3>
                 <p>Train the pollution detection model with real-time epoch tracking and progress updates.</p>
                 <a href="{% url 'train' %}" class="btn btn-primary">Start Training</a>
@@ -79,7 +76,7 @@
 
     <footer>
         <div class="container">
-            <p>&copy; 2024 Pollution Detector. Built with Django & TensorFlow.</p>
+            <p>&copy; 2026 Pollution Detector. Built with Django & TensorFlow by Anish Daswani and Shanmuka Gottimukala.</p>
         </div>
     </footer>
 </body>

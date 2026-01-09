@@ -8,14 +8,14 @@
     <link rel="stylesheet" href="{% static 'ml_app/css/style.css' %}">
 </head>
 <body>
-    <nav class="navbar">
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
         <div class="container">
-            <h1 class="logo">🌍 Pollution Detector</h1>
-            <ul class="nav-links">
-                <li><a href="{% url 'index' %}">Home</a></li>
-                <li><a href="{% url 'graphs' %}">Graphs & Visualizations</a></li>
-                <li><a href="{% url 'predict' %}" class="active">Predict</a></li>
-                <li><a href="{% url 'train' %}">Train</a></li>
+            <h1 class="logo" aria-label="Pollution Detector">🌍 Pollution Detector</h1>
+            <ul class="nav-links" role="menubar">
+                <li role="none"><a href="{% url 'index' %}" role="menuitem">Home</a></li>
+                <li role="none"><a href="{% url 'graphs' %}" role="menuitem">Graphs & Visualizations</a></li>
+                <li role="none"><a href="{% url 'predict' %}" class="active" role="menuitem" aria-current="page">Predict</a></li>
+                <li role="none"><a href="{% url 'train' %}" role="menuitem">Train</a></li>
             </ul>
         </div>
     </nav>
@@ -72,7 +72,6 @@
                     <!-- Prediction Summary -->
                     <div class="prediction-summary">
                         <div class="prediction-badge" id="predictionBadge">
-                            <div class="badge-icon" id="badgeIcon">🌍</div>
                             <div class="badge-content">
                                 <div class="badge-label">Prediction</div>
                                 <div class="badge-value" id="predictedClass"></div>
@@ -127,14 +126,14 @@
                 </div>
             </div>
             <p class="info-note">
-                <small>💡 Tip: For best results, use satellite images or aerial photographs. The model was trained on 96x96 pixel images from Earth Search STAC data.</small>
+                <small>For best results, use satellite images or aerial photographs. The model was trained on 96x96 pixel images from Earth Search STAC data.</small>
             </p>
         </div>
     </main>
 
     <footer>
         <div class="container">
-            <p>&copy; 2024 Pollution Detector. Built with Django & TensorFlow.</p>
+            <p>&copy; 2026 Pollution Detector. Built with Django & TensorFlow by Anish Daswani and Shanmuka Gottimukala.</p>
         </div>
     </footer>
 

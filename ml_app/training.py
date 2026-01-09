@@ -6,6 +6,9 @@ import tensorflow as tf
 from django.conf import settings
 import matplotlib
 matplotlib.use('Agg')
+import logging
+
+logger = logging.getLogger(__name__)
 
 training_state = {
     'status': 'idle',
@@ -122,7 +125,9 @@ def train_model_in_background(epochs=50, batch_size=64, img_size=(96, 96),
                 X_all = build_preview_dataset(FALLBACK_COLLECTIONS, BBOX, DATE_RANGE, page_limit)
             
             training_state['message'] = 'Generating labels...'
-            y_all, _, _ = haze_proxy_labels(X_all)
+            y_all, density_scores, threshold = haze_proxy_labels(X_all)
+            logger.info(f"Generated labels: {np.sum(y_all)} pollution-like ({100*np.sum(y_all)/len(y_all):.1f}%), "
+                       f"{len(y_all)-np.sum(y_all)} clear")
             
             training_state['message'] = 'Splitting dataset...'
             rng = np.random.default_rng(42)
@@ -150,17 +155,45 @@ def train_model_in_background(epochs=50, batch_size=64, img_size=(96, 96),
             
             progress_cb = ProgressCallback()
             early_stop = tf.keras.callbacks.EarlyStopping(
-                monitor='val_loss', mode='min', patience=early_stopping_patience, restore_best_weights=True
+                monitor='val_loss', 
+                mode='min', 
+                patience=early_stopping_patience, 
+                restore_best_weights=True,
+                verbose=1
+            )
+            
+            # Learning rate reduction for better convergence
+            reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.5,
+                patience=max(2, early_stopping_patience // 2),
+                min_lr=1e-7,
+                verbose=1
+            )
+            
+            # Model checkpoint to save best model
+            MODEL_PATH, _, PLOTS_DIR = get_paths()
+            checkpoint_dir = os.path.join(PLOTS_DIR, 'checkpoints')
+            os.makedirs(checkpoint_dir, exist_ok=True)
+            checkpoint_path = os.path.join(checkpoint_dir, 'best_model.keras')
+            
+            model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
+                checkpoint_path,
+                monitor='val_loss',
+                save_best_only=True,
+                save_weights_only=False,
+                verbose=1
             )
             
             training_state['message'] = 'Starting training...'
+            logger.info(f"Starting training with {epochs} epochs, batch size {batch_size}")
             
             history_obj = model.fit(
                 train_ds,
                 epochs=epochs,
                 validation_data=val_ds,
-                verbose=0,
-                callbacks=[progress_cb, early_stop]
+                verbose=0,  # Use callbacks for logging instead
+                callbacks=[progress_cb, early_stop, reduce_lr, model_checkpoint]
             )
             
             training_state['message'] = 'Evaluating model...'
@@ -203,7 +236,11 @@ def train_model_in_background(epochs=50, batch_size=64, img_size=(96, 96),
             training_state['status'] = 'error'
             training_state['message'] = f'Error: {str(e)}'
             import traceback
-            training_state['error'] = traceback.format_exc()
+            error_traceback = traceback.format_exc()
+            training_state['error'] = error_traceback
+            logger.error(f"Training error: {str(e)}\n{error_traceback}")
+            print(f"Training error: {str(e)}")
+            print(error_traceback)
     
     thread = threading.Thread(target=train, daemon=True)
     thread.start()

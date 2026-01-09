@@ -9,14 +9,14 @@
     <link rel="stylesheet" href="{% static 'ml_app/css/style.css' %}">
 </head>
 <body>
-    <nav class="navbar">
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
         <div class="container">
-            <h1 class="logo">🌍 Pollution Detector</h1>
-            <ul class="nav-links">
-                <li><a href="{% url 'index' %}">Home</a></li>
-                <li><a href="{% url 'graphs' %}" class="active">Graphs & Visualizations</a></li>
-                <li><a href="{% url 'predict' %}">Predict</a></li>
-                <li><a href="{% url 'train' %}">Train</a></li>
+            <h1 class="logo" aria-label="Pollution Detector">🌍 Pollution Detector</h1>
+            <ul class="nav-links" role="menubar">
+                <li role="none"><a href="{% url 'index' %}" role="menuitem">Home</a></li>
+                <li role="none"><a href="{% url 'graphs' %}" class="active" role="menuitem" aria-current="page">Graphs & Visualizations</a></li>
+                <li role="none"><a href="{% url 'predict' %}" role="menuitem">Predict</a></li>
+                <li role="none"><a href="{% url 'train' %}" role="menuitem">Train</a></li>
             </ul>
         </div>
     </nav>
@@ -30,18 +30,25 @@
         {% if plot_files %}
             {% for category, plots in plot_categories.items %}
                 {% if plots %}
-                <section class="plot-category">
-                    <h3>{{ category }}</h3>
-                    <div class="plots-grid">
+                <section class="plot-category" aria-labelledby="category-{{ forloop.counter }}">
+                    <h3 id="category-{{ forloop.counter }}">{{ category }}</h3>
+                    <div class="plots-grid" role="list">
                         {% for plot in plots %}
-                        <div class="plot-card">
+                        <div class="plot-card" role="listitem">
                             <div class="plot-image-container">
-                                <img src="/media/plots/{{ plot }}" alt="{{ plot }}" class="plot-image" 
-                                     onerror="this.src='/static/ml_app/img/placeholder.png'; this.alt='Plot not found'">
+                                <img src="/media/plots/{{ plot }}" 
+                                     alt="Visualization: {{ plot|replace_underscore|title }}" 
+                                     class="plot-image"
+                                     loading="lazy"
+                                     onerror="this.onerror=null; this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzMzMzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QbG90IG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4='; this.alt='Plot not found'">
                             </div>
                             <div class="plot-info">
                                 <h4>{{ plot|replace_underscore|title }}</h4>
-                                <a href="/media/plots/{{ plot }}" target="_blank" class="btn btn-sm">View Full Size</a>
+                                <a href="/media/plots/{{ plot }}" 
+                                   target="_blank" 
+                                   rel="noopener noreferrer"
+                                   class="btn btn-sm"
+                                   aria-label="View full size image of {{ plot|replace_underscore|title }}">View Full Size</a>
                             </div>
                         </div>
                         {% endfor %}
@@ -58,12 +65,19 @@
                     {% for plot in other_plots %}
                     <div class="plot-card">
                         <div class="plot-image-container">
-                            <img src="/media/plots/{{ plot }}" alt="{{ plot }}" class="plot-image"
-                                 onerror="this.src='/static/ml_app/img/placeholder.png'; this.alt='Plot not found'">
+                            <img src="/media/plots/{{ plot }}" 
+                                 alt="Visualization: {{ plot|replace_underscore|title }}" 
+                                 class="plot-image"
+                                 loading="lazy"
+                                 onerror="this.onerror=null; this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzMzMzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QbG90IG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4='; this.alt='Plot not found'">
                         </div>
                         <div class="plot-info">
                             <h4>{{ plot|replace_underscore|title }}</h4>
-                            <a href="/media/plots/{{ plot }}" target="_blank" class="btn btn-sm">View Full Size</a>
+                            <a href="/media/plots/{{ plot }}" 
+                               target="_blank" 
+                               rel="noopener noreferrer"
+                               class="btn btn-sm"
+                               aria-label="View full size image of {{ plot|replace_underscore|title }}">View Full Size</a>
                         </div>
                     </div>
                     {% endfor %}
@@ -81,7 +95,7 @@
 
     <footer>
         <div class="container">
-            <p>&copy; 2024 Pollution Detector. Built with Django & TensorFlow.</p>
+            <p>&copy; 2026 Pollution Detector. Built with Django & TensorFlow by Anish Daswani and Shanmuka Gottimukala.</p>
         </div>
     </footer>
 </body>
