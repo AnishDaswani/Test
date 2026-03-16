@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Graphs & Visualizations - Pollution Detector</title>
     {% load static %}
-    {% load ml_filters %}
     <link rel="stylesheet" href="{% static 'ml_app/css/style.css' %}">
 </head>
 <body>
@@ -37,18 +36,18 @@
                         <div class="plot-card" role="listitem">
                             <div class="plot-image-container">
                                 <img src="/media/plots/{{ plot }}" 
-                                     alt="Visualization: {{ plot|replace_underscore|title }}" 
+                                     alt="Visualization: {{ plot|cut:'_'|title }}" 
                                      class="plot-image"
                                      loading="lazy"
                                      onerror="this.onerror=null; this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzMzMzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QbG90IG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4='; this.alt='Plot not found'">
                             </div>
                             <div class="plot-info">
-                                <h4>{{ plot|replace_underscore|title }}</h4>
+                                <h4>{{ plot|cut:'_'|title }}</h4>
                                 <a href="/media/plots/{{ plot }}" 
                                    target="_blank" 
                                    rel="noopener noreferrer"
                                    class="btn btn-sm"
-                                   aria-label="View full size image of {{ plot|replace_underscore|title }}">View Full Size</a>
+                                   aria-label="View full size image of {{ plot|cut:'_'|title }}">View Full Size</a>
                             </div>
                         </div>
                         {% endfor %}
@@ -57,7 +56,6 @@
                 {% endif %}
             {% endfor %}
 
-            <!-- Show any remaining plots not in categories -->
             {% if other_plots %}
             <section class="plot-category">
                 <h3>Other Visualizations</h3>
@@ -66,18 +64,18 @@
                     <div class="plot-card">
                         <div class="plot-image-container">
                             <img src="/media/plots/{{ plot }}" 
-                                 alt="Visualization: {{ plot|replace_underscore|title }}" 
+                                 alt="Visualization: {{ plot|cut:'_'|title }}" 
                                  class="plot-image"
                                  loading="lazy"
                                  onerror="this.onerror=null; this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzMzMzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QbG90IG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4='; this.alt='Plot not found'">
                         </div>
                         <div class="plot-info">
-                            <h4>{{ plot|replace_underscore|title }}</h4>
+                            <h4>{{ plot|cut:'_'|title }}</h4>
                             <a href="/media/plots/{{ plot }}" 
                                target="_blank" 
                                rel="noopener noreferrer"
                                class="btn btn-sm"
-                               aria-label="View full size image of {{ plot|replace_underscore|title }}">View Full Size</a>
+                               aria-label="View full size image of {{ plot|cut:'_'|title }}">View Full Size</a>
                         </div>
                     </div>
                     {% endfor %}
