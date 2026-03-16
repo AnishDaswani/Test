@@ -1,40 +1,25 @@
-#000000
-# Pollution Detector using Tensorflow
-### Requirements:
-```
-    Tensorflow
-    Matplotlib
-    Numpy
-```
-### Project Description:
-```
-    Python Tensorflow AI model to identify pollution through satellite images.
-     Training conducted using earth search satellite images.
-```
-### Setup:
+## Pollution Detector (TensorFlow + Django)
 
- **1. Run Venv**
-
- >. .\\.venv312\Scripts\Activate.ps1
-
- **2. Install Dependencies**
-
- >pip install tensorflow matplotlib numpy
-
- **3. Run**
-
-````markdown
-# Pollution Detector (TensorFlow + Django)
-
-This repository contains a small Django web app and supporting scripts for
-training/previewing a TensorFlow model that detects haze/pollution in
+This project is a small, production-style Django app plus a set of scripts for
+training and serving a TensorFlow model that detects haze/pollution in
 satellite imagery.
 
-Supported runtime: Python 3.12 (the project was tested on 3.12.x).
+The model is trained on preview tiles from the Earth Search STAC API and served
+through a simple web UI with:
+- A home page showing model status and available plots
+- A prediction page (single-image upload with optional Grad‑CAM)
+- A training page with live progress
+- A graphs page for viewing training curves and visualizations
 
-Quick start (Windows PowerShell)
+Supported runtime: **Python 3.12**.
 
-1. Activate the project virtualenv (created as `.venv` in the repo root):
+---
+
+### 1. Quick start (Windows PowerShell)
+
+From the repo root:
+
+1. Activate the virtual environment (or create and use your own):
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
@@ -46,31 +31,64 @@ Quick start (Windows PowerShell)
 pip install -r requirements.txt
 ```
 
-3. Run Django system checks:
+3. Run migrations (first time only):
 
 ```powershell
-.\.venv\Scripts\python3.12 manage.py check
+python manage.py migrate
 ```
 
-4. Start the development server:
+4. Run Django checks and start the server:
 
 ```powershell
-.\.venv\Scripts\python3.12 manage.py runserver
+python manage.py check
+python manage.py runserver
 ```
 
-Notes
+Then open `http://127.0.0.1:8000/` in your browser.
 
-- The web app will copy `plots/*.png` into `media/plots/` when requested.
-- Image decoding now performs a magic-bytes check before invoking TensorFlow
-    decoders to avoid low-level "Unknown image file format" crashes.
-- Unsupported or skipped preview assets are appended to `plots/skipped_assets.log`.
-- TensorFlow is imported lazily in the web code; the app can start without
-    TensorFlow installed, but prediction (model inference), Grad-CAM visualizations,
-    and training require TensorFlow present in the environment.
+---
 
-If you want a quick smoke test, use the `.venv` python to run the system check
-and start the server (steps 3–4 above). For predictable results run everything
-inside the provided `.venv`.
+### 2. Training and CLI tools
 
-````
+You can train and inspect the model from the command line:
 
+- Train from STAC previews and write plots/model:
+
+```powershell
+python main.py
+```
+
+- Run helper commands:
+
+```powershell
+python scripts.py diagnose        # quick sanity check + Grad‑CAM on a small sample
+python scripts.py eval            # small evaluation vs proxy labels
+python scripts.py fine-tune       # short fine‑tune pass
+python scripts.py check-model     # load and summarize the saved model
+python scripts.py check-images    # list available PNG plots
+python scripts.py cleanup         # remove transient build/output folders
+```
+
+The Django training page (`/train/`) uses the same core model and dataset
+utilities as `main.py`, but runs the training loop in a background thread and
+streams progress back as JSON.
+
+---
+
+### 3. Project layout
+
+- `pollution_detector/` – Django settings, URLs, WSGI/ASGI entrypoints  
+- `ml_app/core.py` – STAC data loading, image decoding, proxy labels, CNN, Grad‑CAM  
+- `ml_app/views.py` – all HTTP views and JSON APIs  
+- `ml_app/training.py` – background training logic and progress state  
+- `ml_app/apps.py` – Django app config + optional `main.py` startup hook  
+- `templates/ml_app/` – HTML templates for home, predict, train, graphs  
+- `static/ml_app/` – CSS and JavaScript for the UI  
+- `media/` – runtime media (prediction images, copied plots)  
+- `plots/` – training plots and `skipped_assets.log`  
+- `main.py` – standalone training script  
+- `scripts.py` – CLI utilities
+
+TensorFlow is imported lazily in the web code. The Django app can start
+without TensorFlow installed, but **prediction, training, and Grad‑CAM**
+require TensorFlow to be available in the environment.
