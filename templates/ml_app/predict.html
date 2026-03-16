@@ -58,7 +58,6 @@
                 <h3>Prediction Results</h3>
                 
                 <div class="results-grid">
-                    <!-- Image Display -->
                     <div class="result-image-container">
                         <h4>Input Image</h4>
                         <div class="image-display">
@@ -69,7 +68,6 @@
                         </div>
                     </div>
 
-                    <!-- Prediction Summary -->
                     <div class="prediction-summary">
                         <div class="prediction-badge" id="predictionBadge">
                             <div class="badge-content">
@@ -81,7 +79,6 @@
                     </div>
                 </div>
 
-                <!-- Probability Chart -->
                 <div class="chart-container">
                     <h4>Class Probabilities</h4>
                     <div class="probability-chart" id="probabilityChart">
@@ -89,19 +86,16 @@
                     </div>
                 </div>
 
-                <!-- Confidence Breakdown -->
                 <div class="confidence-breakdown">
                     <h4>Confidence Breakdown</h4>
                     <div class="prob-list" id="probList"></div>
                 </div>
 
-                <!-- Visual Comparison -->
                 <div class="comparison-container">
                     <h4>Probability Comparison</h4>
                     <div class="comparison-bars" id="comparisonBars"></div>
                 </div>
 
-                <!-- Model Visualization (Grad-CAM) -->
                 <div class="visualization-container" id="visualizationContainer" style="display: none;">
                     <h4>Model Visualization - Grad-CAM</h4>
                     <p class="visualization-description">
@@ -109,7 +103,6 @@
                         Red/yellow areas indicate regions the model considers most important.
                     </p>
                     <div class="visualization-grid" id="visualizationGrid">
-                        <!-- Grad-CAM images will be inserted here -->
                     </div>
                 </div>
             </div>
@@ -139,19 +132,15 @@
 
     <script src="{% static 'ml_app/js/predict.js' %}"></script>
     <script>
-        // Redraw chart on window resize
         window.addEventListener('resize', function() {
             const resultsSection = document.getElementById('resultsSection');
             if (resultsSection && resultsSection.style.display !== 'none') {
-                // Trigger a redraw if we have data
                 const canvas = document.getElementById('probabilityCanvas');
                 if (canvas && canvas.dataset.hasData) {
-                    // Chart will be redrawn when needed
                     setTimeout(() => {
                         if (window.lastPredictionData) {
                             const predictScript = document.querySelector('script[src*="predict.js"]');
                             if (predictScript) {
-                                // Just redraw the chart
                                 const ctx = canvas.getContext('2d');
                                 const event = new Event('redrawChart');
                                 window.dispatchEvent(event);

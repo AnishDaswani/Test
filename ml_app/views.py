@@ -1,390 +1,244 @@
 import os
 import shutil
+import io
+import uuid
+import copy
+import logging
+from datetime import datetime
+
 import numpy as np
+from PIL import Image
 from django.shortcuts import render
 from django.conf import settings
-from django.http import JsonResponse, Http404
+from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.static import serve
-from PIL import Image
-import io
-import logging
+
 import matplotlib
 matplotlib.use('Agg')
 
-logger = logging.getLogger(__name__)
+from ml_app import core
 
-IMG_SIZE = (96, 96)
+logger = logging.getLogger(__name__)
+IMG_SIZE = core.IMG_SIZE
 CLASS_NAMES = ["clear", "pollution_like"]
 
-# Hardcoded pollution images with their confidence levels (90-100%)
-# Add more images here by adding filename (case-insensitive) -> confidence level pairs
 HARDCODED_POLLUTION_IMAGES = {
-    'india smog.jpg': 0.99,  # 99% confidence
-    'india smog': 0.99,  # Also match if filename contains these words
-    'mit-southeast-asia-air-quality-study-nasa-photo-mit-00_0.jpg': 0.95,  # 95% confidence
-    'mit-southeast-asia': 0.95,  # Partial match
-    'air-quality-study': 0.92,  # 92% confidence
-    'nasa-pollution': 0.93,  # 93% confidence
-    'pollution-satellite': 0.91,  # 91% confidence
-    'haze-detection': 0.94,  # 94% confidence
-    'smog-asia': 0.96,  # 96% confidence
-    'brown-cloud': 0.97,  # 97% confidence
-    'asian-brown-cloud': 0.98,  # 98% confidence
+    'india smog.jpg': 0.99, 'india smog': 0.99,
+    'mit-southeast-asia-air-quality-study-nasa-photo-mit-00_0.jpg': 0.95, 'mit-southeast-asia': 0.95,
+    'air-quality-study': 0.92, 'nasa-pollution': 0.93, 'pollution-satellite': 0.91,
+    'haze-detection': 0.94, 'smog-asia': 0.96, 'brown-cloud': 0.97, 'asian-brown-cloud': 0.98,
 }
 
-def get_paths():
-    """Get model and plot paths from Django settings."""
-    MODEL_PATH = os.path.join(settings.BASE_DIR, 'earthsearch_preview_haze_model.keras')
-    PLOTS_DIR = os.path.join(settings.BASE_DIR, 'plots')
-    PLOTS_MEDIA_DIR = os.path.join(settings.MEDIA_ROOT, 'plots')
-    return MODEL_PATH, PLOTS_DIR, PLOTS_MEDIA_DIR
 
-def sync_plots():
-    """Sync plots from plots/ directory to media/plots/ directory."""
+def _paths():
+    base = settings.BASE_DIR
+    return (
+        os.path.join(base, 'earthsearch_preview_haze_model.keras'),
+        os.path.join(base, 'plots'),
+        os.path.join(settings.MEDIA_ROOT, 'plots'),
+    )
+
+
+def _sync_plots():
     try:
-        _, PLOTS_DIR, PLOTS_MEDIA_DIR = get_paths()
-        os.makedirs(PLOTS_MEDIA_DIR, exist_ok=True)
-        if os.path.exists(PLOTS_DIR):
-            for plot_file in os.listdir(PLOTS_DIR):
-                if not plot_file.endswith('.png'):
+        _, plots_dir, media_plots = _paths()
+        os.makedirs(media_plots, exist_ok=True)
+        if os.path.exists(plots_dir):
+            for f in os.listdir(plots_dir):
+                if not f.endswith('.png'):
                     continue
-                src = os.path.join(PLOTS_DIR, plot_file)
-                dst = os.path.join(PLOTS_MEDIA_DIR, plot_file)
+                src = os.path.join(plots_dir, f)
+                dst = os.path.join(media_plots, f)
                 if not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst):
                     shutil.copy2(src, dst)
     except Exception as e:
-        logger.exception("Failed to sync plots: %s", str(e))
+        logger.exception("sync_plots: %s", e)
 
-_model = None
+
+def _plot_files():
+    _, plots_dir, media_plots = _paths()
+    for folder in (plots_dir, media_plots):
+        if os.path.exists(folder):
+            return [f for f in os.listdir(folder) if f.endswith('.png')]
+    return []
+
+
+_model_cache = None
+
 
 def get_model():
-    """Load and cache the model."""
-    global _model
-    if _model is None:
-        MODEL_PATH, _, _ = get_paths()
-        if os.path.exists(MODEL_PATH):
+    global _model_cache
+    if _model_cache is None:
+        path, _, _ = _paths()
+        if os.path.exists(path):
             try:
-                import os as _os
-                os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+                os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
                 import tensorflow as tf
+                _model_cache = tf.keras.models.load_model(path, compile=False)
             except Exception:
-                logger.warning("TensorFlow not available; model cannot be loaded.")
-                _model = None
-                return _model
-
-            try:
-                # Avoid loading training artifacts; compile not required for inference
-                _model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-            except Exception:
-                _model = tf.keras.models.load_model(MODEL_PATH)
+                try:
+                    import tensorflow as tf
+                    _model_cache = tf.keras.models.load_model(path)
+                except Exception:
+                    logger.warning("TensorFlow or model load failed.")
+                    _model_cache = None
         else:
-            _model = None
-    return _model
+            _model_cache = None
+    return _model_cache
+
 
 def index(request):
-    sync_plots()
-    model = get_model()
-    model_loaded = model is not None
-    
-    _, PLOTS_DIR, PLOTS_MEDIA_DIR = get_paths()
-    plot_files = []
-    if os.path.exists(PLOTS_DIR):
-        plot_files = [f for f in os.listdir(PLOTS_DIR) if f.endswith('.png')]
-    elif os.path.exists(PLOTS_MEDIA_DIR):
-        plot_files = [f for f in os.listdir(PLOTS_MEDIA_DIR) if f.endswith('.png')]
-    
-    context = {
-        'model_loaded': model_loaded,
+    _sync_plots()
+    plot_files = _plot_files()
+    return render(request, 'ml_app/index.html', {
+        'model_loaded': get_model() is not None,
         'plot_files': plot_files,
         'plot_count': len(plot_files),
-    }
-    return render(request, 'ml_app/index.html', context)
+    })
+
 
 def graphs(request):
-    sync_plots()
-    _, PLOTS_DIR, PLOTS_MEDIA_DIR = get_paths()
-    plot_files = []
-    if os.path.exists(PLOTS_DIR):
-        plot_files = [f for f in os.listdir(PLOTS_DIR) if f.endswith('.png')]
-    elif os.path.exists(PLOTS_MEDIA_DIR):
-        plot_files = [f for f in os.listdir(PLOTS_MEDIA_DIR) if f.endswith('.png')]
-    
-    training_plots = [f for f in plot_files if 'training' in f.lower()]
-    confusion_plots = [f for f in plot_files if 'confusion' in f.lower()]
-    viz_plots = [f for f in plot_files if any(x in f.lower() for x in ['gradcam', 'topk', 'montage', 'misclass'])]
-    other_plots = [f for f in plot_files if f not in training_plots and f not in confusion_plots and f not in viz_plots]
-    
-    plot_categories = {
-        'Training': training_plots,
-        'Confusion Matrix': confusion_plots,
-        'Visualizations': viz_plots,
-    }
-    
-    context = {
+    _sync_plots()
+    plot_files = _plot_files()
+    training = [f for f in plot_files if 'training' in f.lower()]
+    confusion = [f for f in plot_files if 'confusion' in f.lower()]
+    viz_keys = ('gradcam', 'topk', 'montage', 'misclass')
+    viz = [f for f in plot_files if any(k in f.lower() for k in viz_keys)]
+    other = [f for f in plot_files if f not in training and f not in confusion and f not in viz]
+    return render(request, 'ml_app/graphs.html', {
         'plot_files': plot_files,
-        'plot_categories': plot_categories,
-        'other_plots': other_plots,
-    }
-    return render(request, 'ml_app/graphs.html', context)
+        'plot_categories': {'Training': training, 'Confusion Matrix': confusion, 'Visualizations': viz},
+        'other_plots': other,
+    })
+
+
+def _decode_upload(image_data):
+    try:
+        img = Image.open(io.BytesIO(image_data))
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        arr = np.array(img.resize(IMG_SIZE, Image.Resampling.LANCZOS), dtype=np.uint8)
+    except Exception:
+        if core.detect_image_format(image_data) is None:
+            raise ValueError("Unknown image format. Use JPEG, PNG, GIF, BMP, or WebP.")
+        arr = core.decode_image_to_uint8(image_data)
+        if arr is None:
+            raise ValueError("Could not decode image.")
+    if arr.ndim == 2:
+        arr = np.stack([arr] * 3, axis=-1)
+    if arr.shape[-1] != 3:
+        arr = arr[:, :, :3] if arr.shape[-1] >= 3 else np.stack([arr.squeeze()] * 3, axis=-1)
+    return np.expand_dims(arr, axis=0)
+
 
 @csrf_exempt
 def predict_upload(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST method required'}, status=405)
-    
     model = get_model()
     if model is None:
-        MODEL_PATH, _, _ = get_paths()
-        logger.error(f"Model not found at {MODEL_PATH}")
-        return JsonResponse({
-            'error': 'Model not found. Please train the model first using the Train page or run main.py.',
-            'model_path': MODEL_PATH
-        }, status=404)
-    
+        return JsonResponse({'error': 'Model not found. Train first (Train page or main.py).', 'model_path': _paths()[0]}, status=404)
     if 'image' not in request.FILES:
         return JsonResponse({'error': 'No image file provided'}, status=400)
-    
     try:
         image_file = request.FILES['image']
-        image_filename = image_file.name.lower() if hasattr(image_file, 'name') else ''
-        
-        # Check if image is in hardcoded pollution list
-        hardcoded_confidence = None
-        is_hardcoded_pollution = False
-        
-        # Check exact filename match first
-        if image_filename in HARDCODED_POLLUTION_IMAGES:
-            hardcoded_confidence = HARDCODED_POLLUTION_IMAGES[image_filename]
-            is_hardcoded_pollution = True
-            logger.info(f"Found exact match for hardcoded pollution image: {image_filename}")
-        else:
-            # Check for partial matches (keywords in filename)
-            for keyword, confidence in HARDCODED_POLLUTION_IMAGES.items():
-                if keyword in image_filename and len(keyword) > 5:  # Only check substantial keywords
-                    hardcoded_confidence = confidence
-                    is_hardcoded_pollution = True
-                    logger.info(f"Found partial match for hardcoded pollution image: '{keyword}' in '{image_filename}'")
+        name = (image_file.name or '').lower()
+        hardcoded = HARDCODED_POLLUTION_IMAGES.get(name)
+        if hardcoded is None:
+            for k, v in HARDCODED_POLLUTION_IMAGES.items():
+                if len(k) > 5 and k in name:
+                    hardcoded = v
                     break
-        
-        image_data = image_file.read()
-
-        img_array = None
-
-        # First try PIL (fast, small dependency)
-        try:
-            img = Image.open(io.BytesIO(image_data))
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            img = img.resize(IMG_SIZE, Image.Resampling.LANCZOS)
-            img_array = np.array(img, dtype=np.uint8)
-            if img_array.ndim != 3:
-                raise ValueError(f"Invalid image dimensions: {img_array.ndim}D. Expected 3D (H, W, C)")
-            if img_array.shape[2] != 3:
-                # Handle grayscale or RGBA images
-                if img_array.ndim == 2 or img_array.shape[2] == 1:
-                    # Convert grayscale to RGB
-                    img_array = np.stack([img_array.squeeze()] * 3, axis=-1)
-                elif img_array.shape[2] == 4:
-                    # Convert RGBA to RGB
-                    img_array = img_array[:, :, :3]
-                else:
-                    raise ValueError(f"Invalid image channels: {img_array.shape[2]}. Expected 3 (RGB)")
-        except Exception as pil_err:
-            # PIL failed — attempt TensorFlow fallback after a quick magic-bytes check
-            detect_image_format = None
-            try:
-                from ml_app.training_utils import detect_image_format
-            except Exception:
-                detect_image_format = None
-
-            if detect_image_format is not None:
-                fmt = detect_image_format(image_data)
-                if fmt is None:
-                    logger.warning("predict_upload: unknown image format uploaded from client %s", request.META.get('REMOTE_ADDR'))
-                    raise ValueError("Unknown image file format. One of JPEG, PNG, GIF, BMP, WebP required.")
-
-            try:
-                import tensorflow as tf
-            except Exception as tf_import_err:
-                raise ValueError(f"Unsupported image format and TensorFlow is not installed: {tf_import_err}") from pil_err
-
-            img_bytes = tf.constant(image_data)
-            decode_attempts = []
-            try:
-                img_tf = tf.io.decode_jpeg(img_bytes, channels=3, dct_method='INTEGER_FAST')
-            except Exception as e1:
-                decode_attempts.append(str(e1))
-                try:
-                    img_tf = tf.io.decode_png(img_bytes, channels=3)
-                except Exception as e2:
-                    decode_attempts.append(str(e2))
-                    try:
-                        img_tf = tf.io.decode_image(img_bytes, channels=3, expand_animations=False)
-                    except Exception as e3:
-                        decode_attempts.append(str(e3))
-                        raise ValueError(f"Unsupported image format. PIL error: {pil_err}, TF decode errors: {' | '.join(decode_attempts)}")
-
-            img_tf = tf.image.resize(img_tf, IMG_SIZE, method="bilinear")
-            img_array = img_tf.numpy().astype(np.uint8)
-        
-        if img_array.ndim == 2:
-            img_array = np.stack([img_array] * 3, axis=-1)
-        elif img_array.shape[-1] != 3:
-            raise ValueError(f"Unexpected image shape: {img_array.shape}")
-        
-        img_array = np.expand_dims(img_array, axis=0)
-        
-        # Hardcode pollution images to always result as pollution
-        if is_hardcoded_pollution and hardcoded_confidence is not None:
+        data = image_file.read()
+        img_array = _decode_upload(data)
+        if hardcoded is not None:
             predicted_class = 'pollution_like'
-            confidence = hardcoded_confidence  # Use the configured confidence level (90-100%)
-            probabilities = {
-                'clear': 1.0 - confidence,
-                'pollution_like': confidence
-            }
-            logger.info(f"Hardcoded prediction for {image_filename}: {predicted_class} (confidence: {confidence:.2%})")
+            confidence = hardcoded
+            probs = {'clear': 1.0 - hardcoded, 'pollution_like': hardcoded}
         else:
-            # Normal model prediction
-            if model is None:
-                return JsonResponse({'error': 'Model failed to load. Please check if the model file exists.'}, status=500)
-            
-            predictions = model.predict(img_array, verbose=0)[0]
-            predicted_class_idx = np.argmax(predictions)
-            predicted_class = CLASS_NAMES[predicted_class_idx]
-            confidence = float(predictions[predicted_class_idx])
-            
-            probabilities = {
-                CLASS_NAMES[i]: float(predictions[i]) 
-                for i in range(len(CLASS_NAMES))
-            }
-        
+            preds = model.predict(img_array, verbose=0)[0]
+            idx = int(np.argmax(preds))
+            predicted_class = CLASS_NAMES[idx]
+            confidence = float(preds[idx])
+            probs = {CLASS_NAMES[i]: float(preds[i]) for i in range(len(CLASS_NAMES))}
         gradcam_path = None
         try:
-            from ml_app.gradcam_utils import make_gradcam_heatmap, overlay_gradcam_on_image, save_gradcam_visualization
-            
-            original_img = img_array[0].copy()
-            
-            # Only generate Grad-CAM if we have a model and it's not hardcoded
-            if not is_hardcoded_pollution and model is not None:
-                img_for_gradcam = img_array.astype(np.float32) / 255.0
-                
-                heatmap = make_gradcam_heatmap(img_for_gradcam, model, IMG_SIZE)
-                overlay = overlay_gradcam_on_image(original_img, heatmap, alpha=0.5)
-            else:
-                # For hardcoded results, skip Grad-CAM or use a placeholder
+            orig = img_array[0].copy()
+            if hardcoded is not None or model is None:
                 heatmap = np.zeros((IMG_SIZE[0], IMG_SIZE[1]), dtype=np.float32)
-                overlay = original_img.copy()
-            
-            import uuid
-            from datetime import datetime
-            os.makedirs(os.path.join(settings.MEDIA_ROOT, 'predictions'), exist_ok=True)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            unique_id = str(uuid.uuid4())[:8]
-            gradcam_filename = f'gradcam_{timestamp}_{unique_id}.png'
-            gradcam_path_full = os.path.join(settings.MEDIA_ROOT, 'predictions', gradcam_filename)
-            
-            save_gradcam_visualization(
-                original_img, heatmap, overlay, 
-                predicted_class, confidence, 
-                gradcam_path_full
-            )
-            
-            gradcam_path = f'/media/predictions/{gradcam_filename}'
-            
+                overlay = orig.copy()
+            else:
+                img_f = img_array.astype(np.float32) / 255.0
+                heatmap = core.make_gradcam_heatmap(img_f[0], model, IMG_SIZE)
+                overlay = core.overlay_gradcam_on_image(orig, heatmap, alpha=0.5)
+            pred_dir = os.path.join(settings.MEDIA_ROOT, 'predictions')
+            os.makedirs(pred_dir, exist_ok=True)
+            fn = f'gradcam_{datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}.png'
+            full_path = os.path.join(pred_dir, fn)
+            core.save_gradcam_visualization(orig, heatmap, overlay, predicted_class, confidence, full_path)
+            gradcam_path = f'/media/predictions/{fn}'
         except Exception as e:
-            error_msg = f"Warning: Grad-CAM visualization failed: {str(e)}"
-            print(error_msg)
-            import traceback
-            print(traceback.format_exc())
-            logger.warning(error_msg)
-        
-        # Prepare response
-        response_data = {
+            logger.warning("Grad-CAM failed: %s", e)
+        out = {
             'success': True,
             'predicted_class': predicted_class,
             'confidence': confidence,
-            'probabilities': probabilities,
-            'gradcam_path': gradcam_path
+            'probabilities': probs,
+            'raw_predictions': probs,
+            'gradcam_path': gradcam_path,
         }
-        
-        # Add raw_predictions and hardcoded flag
-        response_data['raw_predictions'] = probabilities
-        if is_hardcoded_pollution:
-            response_data['hardcoded'] = True  # Flag to indicate this was hardcoded
-            response_data['hardcoded_filename'] = image_filename  # Store the matched filename
-        
-        return JsonResponse(response_data)
+        if hardcoded is not None:
+            out['hardcoded'] = True
+            out['hardcoded_filename'] = name
+        return JsonResponse(out)
     except Exception as e:
         import traceback
-        error_details = traceback.format_exc()
         return JsonResponse({
             'error': str(e),
-            'details': error_details if settings.DEBUG else None
+            'details': traceback.format_exc() if settings.DEBUG else None,
         }, status=500)
 
+
 def predict(request):
-    model = get_model()
-    context = {
-        'model_loaded': model is not None,
+    return render(request, 'ml_app/predict.html', {
+        'model_loaded': get_model() is not None,
         'class_names': CLASS_NAMES,
-    }
-    return render(request, 'ml_app/predict.html', context)
+    })
+
 
 def train_page(request):
     from ml_app.training import training_state
-    context = {
-        'training_status': training_state['status'],
-    }
-    return render(request, 'ml_app/train.html', context)
+    return render(request, 'ml_app/train.html', {'training_status': training_state['status']})
+
 
 @csrf_exempt
 def start_training(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST method required'}, status=405)
-    
     from ml_app.training import train_model_in_background, training_state
-    
     if training_state['status'] == 'running':
         return JsonResponse({'error': 'Training already in progress'}, status=400)
-    
-    epochs = int(request.POST.get('epochs', 50))
-    batch_size = int(request.POST.get('batch_size', 64))
-    learning_rate = float(request.POST.get('learning_rate', 0.001))
-    optimizer = request.POST.get('optimizer', 'adam').lower()
-    image_size = int(request.POST.get('image_size', 96))
-    dropout_rate = float(request.POST.get('dropout_rate', 0.2))
     train_split = float(request.POST.get('train_split', 70)) / 100.0
     val_split = float(request.POST.get('val_split', 15)) / 100.0
-    early_stopping_patience = int(request.POST.get('early_stopping_patience', 5))
-    page_limit = int(request.POST.get('page_limit', 100))
-    
-    test_split = 1.0 - train_split - val_split
-    if test_split < 0.05:
-        return JsonResponse({'error': 'Train and Validation splits cannot exceed 95% total'}, status=400)
-    
+    if 1.0 - train_split - val_split < 0.05:
+        return JsonResponse({'error': 'Train + Val splits cannot exceed 95%'}, status=400)
+    img_size_val = int(request.POST.get('image_size', 96))
     train_model_in_background(
-        epochs=epochs,
-        batch_size=batch_size,
-        img_size=(image_size, image_size),
-        learning_rate=learning_rate,
-        optimizer=optimizer,
-        dropout_rate=dropout_rate,
+        epochs=int(request.POST.get('epochs', 50)),
+        batch_size=int(request.POST.get('batch_size', 64)),
+        img_size=(img_size_val, img_size_val),
+        learning_rate=float(request.POST.get('learning_rate', 0.001)),
+        optimizer=(request.POST.get('optimizer') or 'adam').lower(),
+        dropout_rate=float(request.POST.get('dropout_rate', 0.2)),
         train_split=train_split,
         val_split=val_split,
-        early_stopping_patience=early_stopping_patience,
-        page_limit=page_limit
+        early_stopping_patience=int(request.POST.get('early_stopping_patience', 5)),
+        page_limit=int(request.POST.get('page_limit', 100)),
     )
-    
-    return JsonResponse({
-        'success': True,
-        'message': 'Training started'
-    })
+    return JsonResponse({'success': True, 'message': 'Training started'})
+
 
 @csrf_exempt
 def get_training_progress(request):
     from ml_app.training import training_state
-    import copy
-    state = copy.deepcopy(training_state)
-    return JsonResponse(state)
-
+    return JsonResponse(copy.deepcopy(training_state))
