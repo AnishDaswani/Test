@@ -145,7 +145,6 @@ y_all, scores = pollution_proxy_labels(X_all, POLLUTION_LABEL_THRESHOLD)
 print(f"Loaded {len(X_all)} images")
 print(f"Pollution labels: {np.sum(y_all)} polluted ({100*np.sum(y_all)/len(y_all):.1f}%), {len(y_all)-np.sum(y_all)} clean")
 
-# ---------------- SPLIT ----------------
 idx = np.random.permutation(len(X_all))
 n = len(idx)
 tr, va = int(0.7*n), int(0.85*n)
@@ -154,7 +153,6 @@ x_train, y_train = X_all[idx[:tr]], y_all[idx[:tr]]
 x_val, y_val     = X_all[idx[tr:va]], y_all[idx[tr:va]]
 x_test, y_test   = X_all[idx[va:]], y_all[idx[va:]]
 
-# ---------------- MODEL WITH POLLUTION BIAS ----------------
 augment = tf.keras.Sequential([
     tf.keras.layers.RandomFlip("horizontal_and_vertical"),
     tf.keras.layers.RandomRotation(0.1),
@@ -192,9 +190,7 @@ model = tf.keras.Sequential([
     tf.keras.layers.Dense(2, activation="softmax")
 ])
 
-# Use class weights to bias toward detecting pollution
-class_weight = {0: 0.7, 1: 1.3}  # Bias toward pollution class
-
+class_weight = {0: 0.7, 1: 1.3} 
 model.compile(
     optimizer=tf.keras.optimizers.Adam(5e-4),
     loss="sparse_categorical_crossentropy",
@@ -203,7 +199,6 @@ model.compile(
 
 print(model.summary())
 
-# ---------------- TRAIN ----------------
 early = tf.keras.callbacks.EarlyStopping(
     patience=10, 
     restore_best_weights=True, 
@@ -228,10 +223,8 @@ history = model.fit(
     verbose=2
 )
 
-# ---------------- LENIENT EVALUATION ----------------
 probs = model.predict(x_test, batch_size=32)
 
-# Use lower threshold - easier to trigger pollution
 y_pred = (probs[:, 1] > PREDICTION_THRESHOLD).astype(int)
 
 acc = np.mean(y_pred == y_test)

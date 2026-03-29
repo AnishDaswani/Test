@@ -1,6 +1,8 @@
-Django>=4.2,<5.0
-tensorflow>=2.13.0
-numpy>=1.24.0
-Pillow>=10.0.0
-matplotlib>=3.7.0
-
+django>=4.2
+tensorflow>=2.15
+numpy
+Pillow
+matplotlib
+pystac-client
+rasterio
+requests
