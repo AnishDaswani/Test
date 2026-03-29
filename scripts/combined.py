@@ -1,7 +1,10 @@
-import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+import sys
+import subprocess
+import django
+from pathlib import Path
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import numpy as np
 from src.pollution_detector import *
 
@@ -32,6 +35,8 @@ print(model.summary())
 
 history = train_model(model, x_train, y_train, x_val, y_val, EPOCHS)
 
+model.save('models/earthsearch_preview_haze_model.keras')
+
 results = evaluate_model(model, x_test, y_test)
 
 print(f"\n{'='*50}")
@@ -48,30 +53,32 @@ print(f"  Mean pollution confidence: {results['probabilities'][:, 1].mean():.3f}
 print(f"  Images with >35% pollution confidence: {np.sum(results['probabilities'][:, 1] > 0.35)}/{len(results['probabilities'])}")
 print(f"  Images with >25% pollution confidence: {np.sum(results['probabilities'][:, 1] > 0.25)}/{len(results['probabilities'])}")
 
-tn = np.sum((y_test == 0) & (results['predictions'] == 0))
-fp = np.sum((y_test == 0) & (results['predictions'] == 1))
-fn = np.sum((y_test == 1) & (results['predictions'] == 0))
-tp = np.sum((y_test == 1) & (results['predictions'] == 1))
+model_path = 'models/earthsearch_preview_haze_model.keras'
+output_dir = 'web/static/models'
 
-print("\nConfusion Matrix:")
-print(f"              Predicted Clean  Predicted Polluted")
-print(f"True Clean         {tn:3d}              {fp:3d}")
-print(f"True Polluted      {fn:3d}              {tp:3d}")
+os.makedirs(output_dir, exist_ok=True)
 
-if results['precision'] > 0:
-    print(f"\nPrecision (of detected pollution): {results['precision']:.2%}")
-if results['recall'] > 0:
-    print(f"Recall (pollution detection rate): {results['recall']:.2%}")
+if os.path.exists(model_path):
+    try:
+        subprocess.run([
+            sys.executable, '-m', 'tensorflowjs_converter',
+            '--input_format=keras',
+            model_path,
+            output_dir
+        ], check=True)
+        print(f"Model converted and saved to {output_dir}")
+    except subprocess.CalledProcessError as e:
+        print(f"Conversion failed: {e}")
+        print("Make sure tensorflowjs is installed: pip install tensorflowjs")
+else:
+    print(f"Model not found at {model_path}")
 
-save_training_plots(history, "models/training_history.png")
-save_sample_predictions(x_test, y_test, results['probabilities'], "models/sample_predictions.png")
+BASE_DIR = Path(__file__).resolve().parent.parent / 'web'
+sys.path.insert(0, str(BASE_DIR))
 
-model.save("models/pollution_model.keras")
-print("Model saved to 'models/pollution_model.keras'")
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'pollution_detector.settings')
+django.setup()
 
-print("\n" + "="*50)
-print("LENIENT MODE ACTIVE")
-print(f"Threshold: {PREDICTION_THRESHOLD:.0%} confidence needed for pollution")
-print(f"Your image at 55% clean = 45% polluted")
-print(f"Would be classified as: POLLUTED ✓")
-print("="*50)
+from django.core.management import execute_from_command_line
+
+execute_from_command_line(['manage.py', 'runserver', '8000'])
