@@ -1,6 +1,6 @@
 # Satellite Pollution Detector
 
-Detect pollution in satellite images using CNN.
+Detect pollution in satellite images using  tensorflow Keras CNN.
 
 ## Setup
 
@@ -8,13 +8,9 @@ pip install -r requirements.txt
 
 ## Run
 
-python scripts/run_server.py
+python scripts/combined.py
 
-## Train Model
+## General Project Info
 
-python scripts/train_model.py
-
-## Convert Model
-
-python scripts/convert_model.py
+Partner project I made with CodingWithCode for the FCS Technology competion in 2026. Secured Second place at the county level. Updated to be better and stuff and much better node tree and file structure.
 

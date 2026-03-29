@@ -47,17 +47,11 @@ def detect_image_format(b):
     return None
 
 def decode_image(b):
-    fmt = detect_image_format(b)
-    if fmt == 'jp2':
-        img = Image.open(io.BytesIO(b))
-        if img.mode != 'RGB':
-            img = img.convert('RGB')
-        img = img.resize(IMG_SIZE, Image.Resampling.LANCZOS)
-        return np.array(img, dtype=np.uint8)
-
-    img = tf.io.decode_image(b, channels=3, expand_animations=False)
-    img = tf.image.resize(img, IMG_SIZE)
-    return img.numpy().astype(np.uint8)
+    img = Image.open(io.BytesIO(b))
+    if img.mode != 'RGB':
+        img = img.convert('RGB')
+    img = img.resize(IMG_SIZE, Image.Resampling.LANCZOS)
+    return np.array(img, dtype=np.uint8)
 
 def load_previews(collections, bbox, date_range):
     feats = stac_search(collections, bbox, date_range)
