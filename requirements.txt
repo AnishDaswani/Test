@@ -1,5 +1,6 @@
 django>=4.2
 tensorflow>=2.15
+tensorflowjs
 numpy
 Pillow
 matplotlib

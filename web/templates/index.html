@@ -1,0 +1,1889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Satellite Pollution Detector</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+  color: white;
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+nav {
+  position: fixed;
+  top: 0;
+  width: 100%;
+  z-index: 50;
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+nav .container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 4rem;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.nav-logo {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.125rem;
+  font-weight: bold;
+}
+
+.nav-title {
+  font-size: 1.125rem;
+  font-weight: bold;
+}
+
+.nav-subtitle {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #94a3b8;
+}
+
+.status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #eab308;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1.5rem 3rem;
+  padding-top: 6rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid #334155;
+}
+
+.tab {
+  padding: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-bottom: 2px solid transparent;
+}
+
+.tab.active {
+  border-bottom-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.tab:hover {
+  color: white;
+}
+
+.panel {
+  animation: slideIn 0.5s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hidden {
+  display: none;
+}
+
+.grid-1-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+@media (max-width: 768px) {
+  .grid-1-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 1rem;
+  padding: 2rem;
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+}
+
+.card-title {
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin-bottom: 1.5rem;
+}
+
+.drop-zone {
+  border: 2px dashed #334155;
+  border-radius: 0.5rem;
+  padding: 3rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.drop-zone:hover {
+  border-color: #3b82f6;
+}
+
+.drop-zone.dragover {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.drop-text {
+  color: #94a3b8;
+  margin-bottom: 0.5rem;
+}
+
+.drop-subtext {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.preview-container {
+  margin-top: 1.5rem;
+}
+
+.preview-img {
+  width: 100%;
+  max-height: 25rem;
+  object-fit: cover;
+  border-radius: 0.5rem;
+}
+
+.btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+}
+
+.btn:hover {
+  opacity: 0.9;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-full {
+  width: 100%;
+}
+
+.btn-secondary {
+  background: #374151;
+  color: #d1d5db;
+}
+
+.btn-secondary:hover {
+  background: #4b5563;
+}
+
+.placeholder {
+  text-align: center;
+  padding: 4rem 0;
+}
+
+.placeholder-icon {
+  width: 4rem;
+  height: 4rem;
+  margin: 0 auto 1rem;
+  color: #64748b;
+}
+
+.placeholder-text {
+  color: #64748b;
+}
+
+.result-container {
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.result-polluted {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  box-shadow: 0 0 30px rgba(239, 68, 68, 0.3);
+}
+
+.result-clean {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  box-shadow: 0 0 30px rgba(34, 197, 94, 0.3);
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.result-label {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.result-badge {
+  padding: 0.25rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-polluted {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.badge-clean {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.badge-labeled {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+.confidence-bar {
+  margin-bottom: 1rem;
+}
+
+.confidence-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+}
+
+.confidence-label span:first-child {
+  color: #94a3b8;
+}
+
+.confidence-bg {
+  width: 100%;
+  height: 12px;
+  background: #374151;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.confidence-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.5s ease;
+}
+
+.fill-polluted {
+  background: #ef4444;
+}
+
+.fill-clean {
+  background: #22c55e;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.stat-card {
+  background: rgba(30, 41, 59, 0.5);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-bottom: 0.25rem;
+}
+
+.stat-value {
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+.stat-red {
+  color: #ef4444;
+}
+
+.stat-green {
+  color: #22c55e;
+}
+
+.stat-blue {
+  color: #3b82f6;
+}
+
+.stat-purple {
+  color: #8b5cf6;
+}
+
+.label-buttons {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.label-btn {
+  flex: 1;
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid;
+}
+
+.label-pollution {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+.label-pollution:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+.label-clean {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #86efac;
+}
+
+.label-clean:hover {
+  background: rgba(34, 197, 94, 0.3);
+}
+
+.grid-1-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 2rem;
+}
+
+@media (max-width: 1024px) {
+  .grid-1-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.875rem;
+  color: #94a3b8;
+  margin-bottom: 0.25rem;
+}
+
+.form-input, .form-select {
+  width: 100%;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: white;
+  outline: none;
+}
+
+.form-input:focus, .form-select:focus {
+  border-color: #3b82f6;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.slider-container {
+  position: relative;
+}
+
+.slider {
+  width: 100%;
+  accent-color: #3b82f6;
+}
+
+.slider-value {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+}
+
+.fetch-progress {
+  margin-bottom: 1rem;
+}
+
+.progress-text {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+}
+
+.progress-text span:first-child {
+  color: #94a3b8;
+}
+
+.progress-text span:last-child {
+  color: #3b82f6;
+}
+
+.progress-bg {
+  width: 100%;
+  height: 8px;
+  background: #374151;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 9999px;
+  transition: width 0.5s ease;
+}
+
+.fetch-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.fetch-count {
+  font-size: 0.875rem;
+  color: #94a3b8;
+}
+
+.btn-auto {
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  color: #c4b5fd;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-auto:hover {
+  background: rgba(139, 92, 246, 0.3);
+}
+
+.satellite-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.satellite-card {
+  background: rgba(30, 41, 59, 0.5);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.satellite-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+}
+
+.satellite-img {
+  width: 100%;
+  height: 9rem;
+  object-fit: cover;
+}
+
+.satellite-overlay {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  background: rgba(0,0,0,0.6);
+  font-size: 0.75rem;
+}
+
+.satellite-content {
+  padding: 0.75rem;
+}
+
+.satellite-id {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-bottom: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.satellite-date {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.satellite-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.satellite-btn {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+}
+
+.btn-classify {
+  flex: 1;
+  background: rgba(139, 92, 246, 0.2);
+  color: #c4b5fd;
+}
+
+.btn-classify:hover {
+  background: rgba(139, 92, 246, 0.3);
+}
+
+.btn-label-p {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.btn-label-p:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+.btn-label-c {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.btn-label-c:hover {
+  background: rgba(34, 197, 94, 0.3);
+}
+
+.filtered-section {
+  margin-top: 2rem;
+}
+
+.filtered-header {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.header-pollution {
+  color: #ef4444;
+}
+
+.header-clean {
+  color: #22c55e;
+}
+
+.pollution-dot, .clean-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+}
+
+.pollution-dot {
+  background: #ef4444;
+}
+
+.clean-dot {
+  background: #22c55e;
+}
+
+.filtered-count {
+  color: #94a3b8;
+}
+
+.filtered-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.filtered-item {
+  position: relative;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.filtered-canvas {
+  width: 100%;
+  height: 7rem;
+  object-fit: cover;
+}
+
+.filtered-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  background: rgba(0,0,0,0.7);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.train-form {
+  margin-bottom: 1rem;
+}
+
+.train-stats {
+  background: rgba(30, 41, 59, 0.5);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.stats-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.stats-row:last-child {
+  margin-bottom: 0;
+}
+
+.stat-item {
+  font-size: 0.875rem;
+}
+
+.stat-number {
+  font-weight: bold;
+}
+
+.number-pollution {
+  color: #ef4444;
+}
+
+.number-clean {
+  color: #22c55e;
+}
+
+.number-total {
+  color: #3b82f6;
+}
+
+.train-progress {
+  margin-bottom: 1.5rem;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+}
+
+.progress-header span:first-child {
+  color: #94a3b8;
+}
+
+.progress-header span:last-child {
+  color: #22c55e;
+}
+
+.train-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.metric-card {
+  background: rgba(30, 41, 59, 0.5);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.metric-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-bottom: 0.25rem;
+}
+
+.metric-value {
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+.value-yellow {
+  color: #eab308;
+}
+
+.value-green {
+  color: #22c55e;
+}
+
+.train-log {
+  background: rgba(15, 23, 42, 1);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  height: 18rem;
+  overflow-y: auto;
+  font-size: 0.75rem;
+  font-family: 'Courier New', monospace;
+  color: #d1d5db;
+}
+
+.log-line {
+  margin-bottom: 0.25rem;
+}
+
+.log-error {
+  color: #ef4444;
+}
+
+.metrics-overview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 768px) {
+  .metrics-overview {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.overview-card {
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.overview-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+}
+
+.overview-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-bottom: 0.5rem;
+}
+
+.overview-value {
+  font-size: 1.875rem;
+  font-weight: bold;
+}
+
+.value-total {
+  color: white;
+}
+
+.value-pollution {
+  color: #ef4444;
+}
+
+.value-clean {
+  color: #22c55e;
+}
+
+.value-confidence {
+  color: #3b82f6;
+}
+
+.history-chart {
+  width: 100%;
+  height: 18.75rem;
+}
+
+.no-history {
+  text-align: center;
+  padding: 4rem 0;
+  color: #64748b;
+}
+
+.prediction-history {
+  margin-top: 2rem;
+}
+
+.prediction-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(30, 41, 59, 0.5);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.prediction-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  margin-right: 0.75rem;
+}
+
+.icon-pollution {
+  background: #ef4444;
+}
+
+.icon-clean {
+  background: #22c55e;
+}
+
+.prediction-type {
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-right: 1rem;
+}
+
+.prediction-confidence {
+  font-size: 0.875rem;
+  color: #94a3b8;
+}
+
+.prediction-time {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 3px;
+}
+
+input[type="file"] {
+  display: none;
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <div class="nav-brand">
+      <div class="nav-logo">P</div>
+      <div>
+        <div class="nav-title">Pollution Detector</div>
+        <div class="nav-subtitle">Satellite CNN Analysis</div>
+      </div>
+    </div>
+    <div class="status">
+      <span class="status-dot"></span>
+      <span id="modelStatus">Model Loading...</span>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <div class="tabs">
+    <button onclick="switchTab('detect')" id="tab-detect" class="tab active">Detection</button>
+    <button onclick="switchTab('pipeline')" id="tab-pipeline" class="tab">STAC Pipeline</button>
+    <button onclick="switchTab('train')" id="tab-train" class="tab">Training</button>
+    <button onclick="switchTab('metrics')" id="tab-metrics" class="tab">Metrics</button>
+  </div>
+
+  <div id="panel-detect" class="panel">
+    <div class="grid-1-2">
+      <div class="card">
+        <h2 class="card-title">Upload Satellite Image</h2>
+        <div id="dropZone" class="drop-zone">
+          <svg class="placeholder-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+          </svg>
+          <p class="drop-text">Drop satellite image or click to browse</p>
+          <p class="drop-subtext">PNG, JPG, TIFF up to 10MB</p>
+          <input type="file" id="fileInput" accept="image/*">
+        </div>
+        <div id="imagePreview" class="preview-container hidden">
+          <img id="previewImg" class="preview-img">
+        </div>
+        <button onclick="classifyImage()" id="classifyBtn" class="btn btn-full" disabled>
+          Analyze for Pollution
+        </button>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Analysis Result</h2>
+        <div id="resultPlaceholder" class="placeholder">
+          <svg class="placeholder-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          </svg>
+          <p class="placeholder-text">Upload an image to see results</p>
+        </div>
+        <div id="resultContent" class="hidden">
+          <div id="resultCard" class="result-container">
+            <div class="result-header">
+              <span id="resultLabel" class="result-label"></span>
+              <span id="resultBadge" class="result-badge"></span>
+            </div>
+            <div class="confidence-bar">
+              <div class="confidence-label">
+                <span>Confidence</span>
+                <span id="resultConfidence"></span>
+              </div>
+              <div class="confidence-bg">
+                <div id="resultBar" class="confidence-fill"></div>
+              </div>
+            </div>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <p class="stat-label">Pollution Score</p>
+              <p id="pollutionScore" class="stat-value stat-red"></p>
+            </div>
+            <div class="stat-card">
+              <p class="stat-label">Clean Score</p>
+              <p id="cleanScore" class="stat-value stat-green"></p>
+            </div>
+            <div class="stat-card">
+              <p class="stat-label">Inference Time</p>
+              <p id="inferTime" class="stat-value stat-blue"></p>
+            </div>
+            <div class="stat-card">
+              <p class="stat-label">Image Size</p>
+              <p id="imgSize" class="stat-value stat-purple"></p>
+            </div>
+          </div>
+          <div class="label-buttons">
+            <button onclick="labelImage('pollution')" class="label-btn label-pollution">Label: Pollution</button>
+            <button onclick="labelImage('clean')" class="label-btn label-clean">Label: Clean</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-pipeline" class="panel hidden">
+    <div class="grid-1-3">
+      <div class="card">
+        <h2 class="card-title">STAC Data Pipeline</h2>
+        <div class="train-form">
+          <div class="form-group">
+            <label class="form-label">Bounding Box (W, S, E, N)</label>
+            <input id="bboxInput" type="text" value="-74.1, 40.6, -73.7, 40.9" class="form-input">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Date Range</label>
+            <div class="form-row">
+              <input id="dateStart" type="date" value="2024-01-01" class="form-input">
+              <input id="dateEnd" type="date" value="2024-06-01" class="form-input">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Max Cloud Cover (%)</label>
+            <input id="cloudCover" type="range" min="0" max="100" value="20" class="slider">
+            <span id="cloudVal" class="slider-value">20%</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Max Results</label>
+            <input id="maxResults" type="number" value="12" min="1" max="50" class="form-input">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Collection</label>
+            <select id="stacCollection" class="form-select">
+              <option value="sentinel-2-l2a">Sentinel-2 L2A</option>
+              <option value="landsat-c2-l2">Landsat C2 L2</option>
+            </select>
+          </div>
+          <button onclick="fetchSTAC()" id="fetchBtn" class="btn btn-full">
+            Fetch Satellite Data
+          </button>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: span 2;">
+        <div class="fetch-header">
+          <h2 class="card-title">Fetched Images</h2>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <span id="fetchCount" class="fetch-count">0 images</span>
+            <button onclick="autoFilterAll()" id="autoFilterBtn" class="btn-auto hidden">
+              Auto-Filter All
+            </button>
+          </div>
+        </div>
+        <div id="fetchProgress" class="fetch-progress hidden">
+          <div class="progress-text">
+            <span>Fetching images...</span>
+            <span id="fetchProgressText">0%</span>
+          </div>
+          <div class="progress-bg">
+            <div id="fetchProgressBar" class="progress-fill" style="width:0%"></div>
+          </div>
+        </div>
+        <div id="stacGrid" class="satellite-grid">
+          <div class="placeholder" style="grid-column: 1 / -1;">
+            <p class="placeholder-text">Configure and fetch satellite imagery</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="filtered-section card">
+      <h2 class="card-title">Auto-Filtered Dataset</h2>
+      <div class="grid-1-2">
+        <div>
+          <h3 class="filtered-header header-pollution">
+            <span class="pollution-dot"></span>
+            Pollution Detected (<span id="pollutionCount">0</span>)
+          </h3>
+          <div id="pollutionGrid" class="filtered-grid"></div>
+        </div>
+        <div>
+          <h3 class="filtered-header header-clean">
+            <span class="clean-dot"></span>
+            Clean (<span id="cleanCount">0</span>)
+          </h3>
+          <div id="cleanGrid" class="filtered-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-train" class="panel hidden">
+    <div class="grid-1-2">
+      <div class="card">
+        <h2 class="card-title">Train CNN Model</h2>
+        <div class="train-form">
+          <div class="form-group">
+            <label class="form-label">Epochs</label>
+            <input id="epochs" type="number" value="20" min="1" max="200" class="form-input">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Learning Rate</label>
+            <select id="learningRate" class="form-select">
+              <option value="0.0001">0.0001</option>
+              <option value="0.0005" selected>0.0005</option>
+              <option value="0.001">0.001</option>
+              <option value="0.005">0.005</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Batch Size</label>
+            <select id="batchSize" class="form-select">
+              <option value="4">4</option>
+              <option value="8" selected>8</option>
+              <option value="16">16</option>
+              <option value="32">32</option>
+            </select>
+          </div>
+          <div class="train-stats">
+            <div class="stats-row">
+              <span class="stat-item">Pollution: <span id="trainPollution" class="stat-number number-pollution">0</span></span>
+              <span class="stat-item">Clean: <span id="trainClean" class="stat-number number-clean">0</span></span>
+              <span class="stat-item">Total: <span id="trainTotal" class="stat-number number-total">0</span></span>
+            </div>
+          </div>
+          <button onclick="trainModel()" id="trainBtn" class="btn btn-full" disabled>
+            Start Training
+          </button>
+          <button onclick="resetModel()" class="btn btn-secondary btn-full" style="margin-top: 0.5rem;">
+            Reset Model
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Training Progress</h2>
+        <div id="trainingIdle" class="placeholder">
+          <p class="placeholder-text">Add training data and start training</p>
+        </div>
+        <div id="trainingActive" class="hidden">
+          <div class="train-progress">
+            <div class="progress-header">
+              <span>Epoch <span id="currentEpoch">0</span>/<span id="totalEpochs">0</span></span>
+              <span id="trainingPercent">0%</span>
+            </div>
+            <div class="progress-bg">
+              <div id="trainingBar" class="progress-fill fill-clean" style="width:0%"></div>
+            </div>
+          </div>
+          <div class="train-metrics">
+            <div class="metric-card">
+              <p class="metric-label">Loss</p>
+              <p id="currentLoss" class="metric-value value-yellow">-</p>
+            </div>
+            <div class="metric-card">
+              <p class="metric-label">Accuracy</p>
+              <p id="currentAcc" class="metric-value value-green">-</p>
+            </div>
+          </div>
+          <div class="train-log">
+            <p class="metric-label" style="margin-bottom: 0.5rem;">Training Log</p>
+            <div id="trainingLog"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-metrics" class="panel hidden">
+    <div class="metrics-overview">
+      <div class="overview-card">
+        <p class="overview-label">Total Predictions</p>
+        <p id="metricTotal" class="overview-value value-total">0</p>
+      </div>
+      <div class="overview-card">
+        <p class="overview-label">Pollution Found</p>
+        <p id="metricPollution" class="overview-value value-pollution">0</p>
+      </div>
+      <div class="overview-card">
+        <p class="overview-label">Clean Images</p>
+        <p id="metricClean" class="overview-value value-clean">0</p>
+      </div>
+      <div class="overview-card">
+        <p class="overview-label">Avg Confidence</p>
+        <p id="metricConf" class="overview-value value-confidence">-</p>
+      </div>
+    </div>
+    <div class="card">
+      <h2 class="card-title">Training History</h2>
+      <canvas id="historyChart" class="history-chart"></canvas>
+      <div id="noHistory" class="no-history">
+        <p>Train the model to see loss/accuracy history</p>
+      </div>
+    </div>
+    <div class="prediction-history card">
+      <h2 class="card-title">Prediction History</h2>
+      <div id="predHistory">
+        <div class="placeholder">
+          <p class="placeholder-text">No predictions yet</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const IMG_SIZE = 128;
+const STAC_API = 'https://earth-search.aws.element84.com/v1';
+
+let model = null;
+let isTraining = false;
+let trainingData = { pollution: [], clean: [] };
+let predictions = [];
+let trainHistory = { loss: [], acc: [] };
+let fetchedItems = [];
+
+function switchTab(name) {
+  ['detect','pipeline','train','metrics'].forEach(t => {
+    document.getElementById('panel-' + t).classList.add('hidden');
+    document.getElementById('tab-' + t).classList.remove('tab-active');
+    document.getElementById('tab-' + t).classList.add('text-slate-400');
+  });
+  document.getElementById('panel-' + name).classList.remove('hidden');
+  document.getElementById('tab-' + name).classList.add('tab-active');
+  document.getElementById('tab-' + name).classList.remove('text-slate-400');
+  if (name === 'train') updateTrainCounts();
+  if (name === 'metrics') renderHistory();
+}
+
+async function buildModel() {
+  const m = tf.sequential();
+  m.add(tf.layers.conv2d({ inputShape: [IMG_SIZE, IMG_SIZE, 3], filters: 32, kernelSize: 3, activation: 'relu', padding: 'same' }));
+  m.add(tf.layers.batchNormalization());
+  m.add(tf.layers.maxPooling2d({ poolSize: 2 }));
+  m.add(tf.layers.dropout({ rate: 0.25 }));
+  m.add(tf.layers.conv2d({ filters: 64, kernelSize: 3, activation: 'relu', padding: 'same' }));
+  m.add(tf.layers.batchNormalization());
+  m.add(tf.layers.maxPooling2d({ poolSize: 2 }));
+  m.add(tf.layers.dropout({ rate: 0.25 }));
+  m.add(tf.layers.conv2d({ filters: 128, kernelSize: 3, activation: 'relu', padding: 'same' }));
+  m.add(tf.layers.batchNormalization());
+  m.add(tf.layers.globalAveragePooling2d());
+  m.add(tf.layers.dense({ units: 128, activation: 'relu' }));
+  m.add(tf.layers.dropout({ rate: 0.5 }));
+  m.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }));
+  return m;
+}
+
+function compileModel(lr) {
+  model.compile({
+    optimizer: tf.train.adam(lr),
+    loss: 'binaryCrossentropy',
+    metrics: ['accuracy']
+  });
+}
+
+async function initModel() {
+  try {
+    model = await buildModel();
+    compileModel(0.0005);
+    document.getElementById('modelStatus').innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-green-400 text-sm">Model Ready</span>';
+  } catch(e) {
+    document.getElementById('modelStatus').innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span><span class="text-red-400 text-sm">Model Error</span>';
+  }
+}
+
+function imgToTensor(imgEl) {
+  return tf.tidy(() => {
+    let t = tf.browser.fromPixels(imgEl);
+    t = tf.image.resizeBilinear(t, [IMG_SIZE, IMG_SIZE]);
+    t = t.toFloat().div(255.0);
+    return t.expandDims(0);
+  });
+}
+
+function canvasToTensor(canvas) {
+  return tf.tidy(() => {
+    let t = tf.browser.fromPixels(canvas);
+    t = tf.image.resizeBilinear(t, [IMG_SIZE, IMG_SIZE]);
+    t = t.toFloat().div(255.0);
+    return t.expandDims(0);
+  });
+}
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-blue-500'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-blue-500'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('border-blue-500');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+let currentFile = null;
+
+function handleFile(file) {
+  currentFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('previewImg').src = e.target.result;
+    document.getElementById('imagePreview').classList.remove('hidden');
+    document.getElementById('classifyBtn').disabled = false;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function classifyImage() {
+  if (!model || !currentFile) return;
+  const btn = document.getElementById('classifyBtn');
+  btn.textContent = 'Analyzing...';
+  btn.disabled = true;
+
+  const img = document.getElementById('previewImg');
+  const start = performance.now();
+  const tensor = imgToTensor(img);
+  const pred = model.predict(tensor);
+  const score = (await pred.data())[0];
+  const elapsed = performance.now() - start;
+
+  tensor.dispose();
+  pred.dispose();
+
+  const isPollution = score > 0.5;
+  const confidence = isPollution ? score : 1 - score;
+
+  displayResult(isPollution, confidence, score, elapsed, img);
+  predictions.push({ isPollution, confidence, score, time: new Date().toLocaleTimeString() });
+  updateMetrics();
+
+  btn.textContent = 'Analyze for Pollution';
+  btn.disabled = false;
+}
+
+function displayResult(isPollution, confidence, score, elapsed, img) {
+  document.getElementById('resultPlaceholder').classList.add('hidden');
+  document.getElementById('resultContent').classList.remove('hidden');
+
+  const card = document.getElementById('resultCard');
+  card.className = 'rounded-xl p-6 mb-6 ' + (isPollution ? 'bg-red-900/30 border border-red-600/30 glow-red' : 'bg-green-900/30 border border-green-600/30 glow-green');
+
+  document.getElementById('resultLabel').textContent = isPollution ? 'Pollution Detected' : 'Clean Area';
+  const badge = document.getElementById('resultBadge');
+  badge.textContent = isPollution ? 'POLLUTED' : 'CLEAN';
+  badge.className = 'px-4 py-1 rounded-full text-sm font-semibold ' + (isPollution ? 'bg-red-600/30 text-red-400' : 'bg-green-600/30 text-green-400');
+
+  document.getElementById('resultConfidence').textContent = (confidence * 100).toFixed(1) + '%';
+  const bar = document.getElementById('resultBar');
+  bar.style.width = (confidence * 100) + '%';
+  bar.className = 'h-full rounded-full progress-bar ' + (isPollution ? 'bg-red-500' : 'bg-green-500');
+
+  document.getElementById('pollutionScore').textContent = (score * 100).toFixed(1) + '%';
+  document.getElementById('cleanScore').textContent = ((1 - score) * 100).toFixed(1) + '%';
+  document.getElementById('inferTime').textContent = elapsed.toFixed(0) + 'ms';
+  document.getElementById('imgSize').textContent = img.naturalWidth + 'x' + img.naturalHeight;
+}
+
+function labelImage(label) {
+  const img = document.getElementById('previewImg');
+  const canvas = document.createElement('canvas');
+  canvas.width = IMG_SIZE;
+  canvas.height = IMG_SIZE;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, IMG_SIZE, IMG_SIZE);
+  const imageData = ctx.getImageData(0, 0, IMG_SIZE, IMG_SIZE);
+
+  trainingData[label === 'pollution' ? 'pollution' : 'clean'].push(imageData);
+  updateTrainCounts();
+
+  const badge = document.getElementById('resultBadge');
+  badge.textContent = 'LABELED: ' + label.toUpperCase();
+  badge.className = 'px-4 py-1 rounded-full text-sm font-semibold bg-blue-600/30 text-blue-400';
+}
+
+function updateTrainCounts() {
+  const p = trainingData.pollution.length;
+  const c = trainingData.clean.length;
+  document.getElementById('trainPollution').textContent = p;
+  document.getElementById('trainClean').textContent = c;
+  document.getElementById('trainTotal').textContent = p + c;
+  document.getElementById('trainBtn').disabled = (p + c) < 2;
+}
+
+document.getElementById('cloudCover').addEventListener('input', e => {
+  document.getElementById('cloudVal').textContent = e.target.value + '%';
+});
+
+async function fetchSTAC() {
+  const btn = document.getElementById('fetchBtn');
+  btn.textContent = 'Fetching...';
+  btn.disabled = true;
+
+  const bbox = document.getElementById('bboxInput').value.split(',').map(Number);
+  const dateStart = document.getElementById('dateStart').value;
+  const dateEnd = document.getElementById('dateEnd').value;
+  const cloud = parseInt(document.getElementById('cloudCover').value);
+  const limit = parseInt(document.getElementById('maxResults').value);
+  const collection = document.getElementById('stacCollection').value;
+
+  document.getElementById('fetchProgress').classList.remove('hidden');
+
+  try {
+    const searchUrl = `${STAC_API}/search`;
+    const body = {
+      collections: [collection],
+      bbox: bbox,
+      datetime: `${dateStart}T00:00:00Z/${dateEnd}T23:59:59Z`,
+      limit: limit,
+      query: { "eo:cloud_cover": { "lte": cloud } }
+    };
+
+    const resp = await fetch(searchUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const data = await resp.json();
+    fetchedItems = data.features || [];
+
+    document.getElementById('fetchCount').textContent = fetchedItems.length + ' images';
+    document.getElementById('fetchProgressText').textContent = '100%';
+    document.getElementById('fetchProgressBar').style.width = '100%';
+
+    await renderFetchedImages(fetchedItems, collection);
+
+    if (fetchedItems.length > 0) {
+      document.getElementById('autoFilterBtn').classList.remove('hidden');
+    }
+
+  } catch(e) {
+    document.getElementById('stacGrid').innerHTML = '<div class="col-span-full text-center py-8 text-red-400">Error fetching: ' + e.message + '</div>';
+  }
+
+  btn.textContent = 'Fetch Satellite Data';
+  btn.disabled = false;
+  setTimeout(() => document.getElementById('fetchProgress').classList.add('hidden'), 1000);
+}
+
+async function renderFetchedImages(items, collection) {
+  const grid = document.getElementById('stacGrid');
+  grid.innerHTML = '';
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    let thumbUrl = null;
+
+    if (item.assets) {
+      if (item.assets.thumbnail) thumbUrl = item.assets.thumbnail.href;
+      else if (item.assets.rendered_preview) thumbUrl = item.assets.rendered_preview.href;
+      else if (item.assets.visual && item.assets.visual.href) thumbUrl = item.assets.visual.href;
+    }
+
+    if (!thumbUrl && item.links) {
+      const prevLink = item.links.find(l => l.rel === 'preview' || l.rel === 'thumbnail');
+      if (prevLink) thumbUrl = prevLink.href;
+    }
+
+    const card = document.createElement('div');
+    card.className = 'bg-slate-800/50 rounded-xl overflow-hidden card-hover';
+
+    const cloudCover = item.properties?.['eo:cloud_cover'] ?? 'N/A';
+    const date = item.properties?.datetime?.split('T')[0] ?? 'Unknown';
+
+    card.innerHTML = `
+      <div class="relative">
+        ${thumbUrl ? `<img src="${thumbUrl}" crossorigin="anonymous" alt="Satellite" class="w-full h-36 object-cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="w-full h-36 bg-slate-700 items-center justify-center text-slate-500 text-xs" style="display:none">No preview</div>` : `<div class="w-full h-36 bg-slate-700 flex items-center justify-center text-slate-500 text-xs">No preview</div>`}
+        <div class="absolute top-2 right-2 px-2 py-0.5 rounded bg-black/60 text-xs">${cloudCover !== 'N/A' ? cloudCover.toFixed(0) + '% cloud' : 'N/A'}</div>
+      </div>
+      <div class="p-3">
+        <p class="text-xs text-slate-400 truncate">${item.id}</p>
+        <p class="text-xs text-slate-500">${date}</p>
+        <div class="flex gap-2 mt-2">
+          <button onclick="filterSingle(${i})" class="flex-1 text-xs py-1 rounded bg-purple-600/20 text-purple-400 hover:bg-purple-600/30">Classify</button>
+          <button onclick="addToTraining(${i}, 'pollution')" class="text-xs py-1 px-2 rounded bg-red-600/20 text-red-400 hover:bg-red-600/30">P</button>
+          <button onclick="addToTraining(${i}, 'clean')" class="text-xs py-1 px-2 rounded bg-green-600/20 text-green-400 hover:bg-green-600/30">C</button>
+        </div>
+      </div>
+    `;
+
+    grid.appendChild(card);
+
+    document.getElementById('fetchProgressText').textContent = Math.round(((i + 1) / items.length) * 100) + '%';
+    document.getElementById('fetchProgressBar').style.width = Math.round(((i + 1) / items.length) * 100) + '%';
+  }
+}
+
+async function getItemThumbnail(item) {
+  if (item.assets) {
+    if (item.assets.thumbnail) return item.assets.thumbnail.href;
+    if (item.assets.rendered_preview) return item.assets.rendered_preview.href;
+    if (item.assets.visual) return item.assets.visual.href;
+  }
+  return null;
+}
+
+function loadImageFromUrl(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Failed to load'));
+    img.src = url;
+  });
+}
+
+function analyzePixelsForPollution(canvas) {
+  const ctx = canvas.getContext('2d');
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const totalPixels = canvas.width * canvas.height;
+
+  let hazeScore = 0;
+  let brownScore = 0;
+  let grayScore = 0;
+  let darkScore = 0;
+  let saturationSum = 0;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const diff = max - min;
+    const brightness = (r + g + b) / 3;
+
+    const saturation = max === 0 ? 0 : diff / max;
+    saturationSum += saturation;
+
+    if (saturation < 0.15 && brightness > 100 && brightness < 220) hazeScore++;
+    if (r > g && g > b && r - b > 20 && r - b < 80 && saturation < 0.4) brownScore++;
+    if (diff < 30 && brightness > 80 && brightness < 180) grayScore++;
+    if (brightness < 50) darkScore++;
+  }
+
+  const hazeRatio = hazeScore / totalPixels;
+  const brownRatio = brownScore / totalPixels;
+  const grayRatio = grayScore / totalPixels;
+  const avgSaturation = saturationSum / totalPixels;
+
+  let pollutionProbability = 0;
+  pollutionProbability += Math.min(hazeRatio * 2, 0.35);
+  pollutionProbability += Math.min(brownRatio * 1.5, 0.25);
+  pollutionProbability += Math.min(grayRatio * 0.8, 0.2);
+  pollutionProbability += Math.max(0, (0.3 - avgSaturation)) * 0.5;
+
+  return Math.min(pollutionProbability, 1);
+}
+
+async function filterSingle(idx) {
+  const item = fetchedItems[idx];
+  const thumbUrl = await getItemThumbnail(item);
+  if (!thumbUrl) return;
+
+  try {
+    const img = await loadImageFromUrl(thumbUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = IMG_SIZE;
+    canvas.height = IMG_SIZE;
+    canvas.getContext('2d').drawImage(img, 0, 0, IMG_SIZE, IMG_SIZE);
+
+    let isPollution = false;
+    let score = 0;
+
+    if (model) {
+      const tensor = canvasToTensor(canvas);
+      const pred = model.predict(tensor);
+      score = (await pred.data())[0];
+      tensor.dispose();
+      pred.dispose();
+      isPollution = score > 0.5;
+    }
+
+    const pixelScore = analyzePixelsForPollution(canvas);
+    const combinedScore = model ? (score * 0.6 + pixelScore * 0.4) : pixelScore;
+    isPollution = combinedScore > 0.45;
+
+    const imageData = canvas.getContext('2d').getImageData(0, 0, IMG_SIZE, IMG_SIZE);
+    const targetLabel = isPollution ? 'pollution' : 'clean';
+    trainingData[targetLabel].push(imageData);
+
+    addToFilteredGrid(canvas, isPollution, combinedScore, item.id);
+    updateTrainCounts();
+
+  } catch(e) {}
+}
+
+async function autoFilterAll() {
+  const btn = document.getElementById('autoFilterBtn');
+  btn.textContent = 'Filtering...';
+  btn.disabled = true;
+
+  for (let i = 0; i < fetchedItems.length; i++) {
+    await filterSingle(i);
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  btn.textContent = 'Auto-Filter All';
+  btn.disabled = false;
+}
+
+function addToFilteredGrid(canvas, isPollution, score, itemId) {
+  const grid = document.getElementById(isPollution ? 'pollutionGrid' : 'cleanGrid');
+  const countEl = document.getElementById(isPollution ? 'pollutionCount' : 'cleanCount');
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'relative rounded-lg overflow-hidden';
+
+  const clonedCanvas = document.createElement('canvas');
+  clonedCanvas.width = IMG_SIZE;
+  clonedCanvas.height = IMG_SIZE;
+  clonedCanvas.className = 'w-full h-28 object-cover';
+  clonedCanvas.getContext('2d').drawImage(canvas, 0, 0);
+
+  const label = document.createElement('div');
+  label.className = 'absolute bottom-0 left-0 right-0 px-2 py-1 text-xs bg-black/70 truncate';
+  label.textContent = (score * 100).toFixed(0) + '% - ' + (itemId || '').substring(0, 15);
+
+  wrapper.appendChild(clonedCanvas);
+  wrapper.appendChild(label);
+  grid.appendChild(wrapper);
+
+  countEl.textContent = grid.children.length;
+}
+
+async function addToTraining(idx, label) {
+  const item = fetchedItems[idx];
+  const thumbUrl = await getItemThumbnail(item);
+  if (!thumbUrl) return;
+
+  try {
+    const img = await loadImageFromUrl(thumbUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = IMG_SIZE;
+    canvas.height = IMG_SIZE;
+    canvas.getContext('2d').drawImage(img, 0, 0, IMG_SIZE, IMG_SIZE);
+
+    const imageData = canvas.getContext('2d').getImageData(0, 0, IMG_SIZE, IMG_SIZE);
+    trainingData[label].push(imageData);
+
+    addToFilteredGrid(canvas, label === 'pollution', label === 'pollution' ? 1 : 0, item.id);
+    updateTrainCounts();
+  } catch(e) {}
+}
+
+async function trainModel() {
+  if (isTraining) return;
+  isTraining = true;
+
+  const epochs = parseInt(document.getElementById('epochs').value);
+  const lr = parseFloat(document.getElementById('learningRate').value);
+  const batchSize = parseInt(document.getElementById('batchSize').value);
+
+  document.getElementById('trainingIdle').classList.add('hidden');
+  document.getElementById('trainingActive').classList.remove('hidden');
+  document.getElementById('totalEpochs').textContent = epochs;
+  document.getElementById('trainBtn').disabled = true;
+  document.getElementById('trainBtn').textContent = 'Training...';
+
+  const log = document.getElementById('trainingLog');
+  log.innerHTML = '';
+
+  await resetModel();
+  compileModel(lr);
+
+  const allData = [];
+  trainingData.pollution.forEach(d => allData.push({ data: d, label: 1 }));
+  trainingData.clean.forEach(d => allData.push({ data: d, label: 0 }));
+
+  for (let i = allData.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [allData[i], allData[j]] = [allData[j], allData[j]];
+  }
+
+  const tensors = allData.map(d => {
+    const canvas = document.createElement('canvas');
+    canvas.width = IMG_SIZE;
+    canvas.height = IMG_SIZE;
+    canvas.getContext('2d').putImageData(d.data, 0, 0);
+    return { tensor: canvasToTensor(canvas), label: d.label };
+  });
+
+  const xs = tf.concat(tensors.map(t => t.tensor));
+  const ys = tf.tensor2d(tensors.map(t => [t.label]));
+
+  tensors.forEach(t => t.tensor.dispose());
+
+  trainHistory = { loss: [], acc: [] };
+
+  try {
+    await model.fit(xs, ys, {
+      epochs: epochs,
+      batchSize: batchSize,
+      validationSplit: 0.2,
+      shuffle: true,
+      callbacks: {
+        onEpochEnd: (epoch, logs) => {
+          const pct = Math.round(((epoch + 1) / epochs) * 100);
+          document.getElementById('currentEpoch').textContent = epoch + 1;
+          document.getElementById('trainingPercent').textContent = pct + '%';
+          document.getElementById('trainingBar').style.width = pct + '%';
+          document.getElementById('currentLoss').textContent = logs.loss.toFixed(4);
+          document.getElementById('currentAcc').textContent = (logs.acc * 100).toFixed(1) + '%';
+
+          trainHistory.loss.push(logs.loss);
+          trainHistory.acc.push(logs.acc);
+
+          const entry = document.createElement('div');
+          entry.textContent = `Epoch ${epoch + 1}: loss=${logs.loss.toFixed(4)} acc=${(logs.acc * 100).toFixed(1)}% val_loss=${(logs.val_loss || 0).toFixed(4)}`;
+          log.appendChild(entry);
+          log.scrollTop = log.scrollHeight;
+        }
+      }
+    });
+  } catch(e) {
+    const entry = document.createElement('div');
+    entry.className = 'text-red-400';
+    entry.textContent = 'Error: ' + e.message;
+    log.appendChild(entry);
+  }
+
+  xs.dispose();
+  ys.dispose();
+
+  isTraining = false;
+  document.getElementById('trainBtn').disabled = false;
+  document.getElementById('trainBtn').textContent = 'Start Training';
+  document.getElementById('modelStatus').innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-green-400 text-sm">Model Trained</span>';
+}
+
+async function resetModel() {
+  if (model) model.dispose();
+  model = await buildModel();
+  compileModel(0.0005);
+}
+
+function updateMetrics() {
+  document.getElementById('metricTotal').textContent = predictions.length;
+  const polluted = predictions.filter(p => p.isPollution).length;
+  const clean = predictions.length - polluted;
+  document.getElementById('metricPollution').textContent = polluted;
+  document.getElementById('metricClean').textContent = clean;
+
+  if (predictions.length > 0) {
+    const avgConf = predictions.reduce((s, p) => s + p.confidence, 0) / predictions.length;
+    document.getElementById('metricConf').textContent = (avgConf * 100).toFixed(1) + '%';
+  }
+
+  renderPredHistory();
+}
+
+function renderPredHistory() {
+  const container = document.getElementById('predHistory');
+  container.innerHTML = '';
+
+  predictions.slice().reverse().forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'flex items-center justify-between bg-slate-800/50 rounded-xl px-4 py-3';
+    div.innerHTML = `
+      <div class="flex items-center gap-3">
+        <span class="w-3 h-3 rounded-full ${p.isPollution ? 'bg-red-500' : 'bg-green-500'}"></span>
+        <span class="text-sm font-medium">${p.isPollution ? 'Pollution' : 'Clean'}</span>
+      </div>
+      <span class="text-sm text-slate-400">${(p.confidence * 100).toFixed(1)}%</span>
+      <span class="text-xs text-slate-500">${p.time}</span>
+    `;
+    container.appendChild(div);
+  });
+}
+
+function renderHistory() {
+  const canvas = document.getElementById('historyChart');
+  const notice = document.getElementById('noHistory');
+
+  if (trainHistory.loss.length === 0) {
+    notice.classList.remove('hidden');
+    canvas.classList.add('hidden');
+    return;
+  }
+
+  notice.classList.add('hidden');
+  canvas.classList.remove('hidden');
+
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width = canvas.parentElement.clientWidth - 64;
+  const h = canvas.height = 250;
+  ctx.clearRect(0, 0, w, h);
+
+  const padding = { top: 20, right: 60, bottom: 30, left: 50 };
+  const chartW = w - padding.left - padding.right;
+  const chartH = h - padding.top - padding.bottom;
+
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (chartH / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(w - padding.right, y);
+    ctx.stroke();
+    ctx.fillStyle = '#64748b';
+    ctx.font = '11px Inter';
+    ctx.textAlign = 'right';
+    ctx.fillText((1 - i * 0.25).toFixed(2), padding.left - 8, y + 4);
+  }
+
+  const epochs = trainHistory.loss.length;
+
+  function drawLine(data, color, maxVal) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    data.forEach((v, i) => {
+      const x = padding.left + (i / Math.max(epochs - 1, 1)) * chartW;
+      const y = padding.top + (1 - v / maxVal) * chartH;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  const maxLoss = Math.max(...trainHistory.loss, 1);
+  drawLine(trainHistory.loss, '#eab308', maxLoss);
+  drawLine(trainHistory.acc, '#22c55e', 1);
+
+  ctx.fillStyle = '#eab308';
+  ctx.fillRect(w - padding.right + 10, padding.top, 12, 3);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Inter';
+  ctx.textAlign = 'left';
+  ctx.fillText('Loss', w - padding.right + 26, padding.top + 4);
+
+  ctx.fillStyle = '#22c55e';
+  ctx.fillRect(w - padding.right + 10, padding.top + 18, 12, 3);
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText('Acc', w - padding.right + 26, padding.top + 22);
+}
+
+initModel();
+</script>
+</body>
+</html>
