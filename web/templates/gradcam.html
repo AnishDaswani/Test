@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grad-CAM Visualization - Satellite Pollution Detector</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.5.1/dist/tfjs-vis.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-eye"></i> Grad-CAM Visualization</h1>
+            <p>Understand what your AI model sees - visualize decision-making areas</p>
+            <a href="/" class="back-link"><i class="fas fa-arrow-left"></i> Back to Analysis</a>
+        </header>
+
+        <main class="main-content">
+            <div class="gradcam-grid">
+                <section class="gradcam-section">
+                    <h2><i class="fas fa-upload"></i> Upload Image</h2>
+                    <div class="section-content">
+                        <div id="gradcamDropZone">
+                            <div class="icon"><i class="fas fa-images"></i></div>
+                            <p>Drop your satellite image here, or click to browse</p>
+                            <small style="color: var(--text-muted);">See what the model focuses on</small>
+                            <input type="file" id="gradcamFileInput" accept="image/*">
+                        </div>
+                    </div>
+                </section>
+
+                <section class="gradcam-section">
+                    <h2><i class="fas fa-chart-area"></i> Model Focus Areas</h2>
+                    <div class="section-content">
+                        <div id="visualizationContainer" style="display: none;">
+                            <div class="vis-row">
+                                <div class="vis-item">
+                                    <h3>Original Image</h3>
+                                    <canvas id="originalCanvas" width="224" height="224"></canvas>
+                                </div>
+                                <div class="vis-item">
+                                    <h3>Grad-CAM Heatmap</h3>
+                                    <canvas id="heatmapCanvas" width="224" height="224"></canvas>
+                                </div>
+                            </div>
+
+                            <div class="vis-row">
+                                <div class="vis-item">
+                                    <h3>Overlay (50% opacity)</h3>
+                                    <canvas id="overlayCanvas" width="224" height="224"></canvas>
+                                </div>
+                                <div class="vis-item">
+                                    <h3>Model Prediction</h3>
+                                    <div id="predictionResults" class="prediction-display">
+                                        <div class="prediction-bar">
+                                            <div class="prediction-fill" id="predictionFill"></div>
+                                        </div>
+                                        <div class="prediction-text">
+                                            <span id="predictionLabel">Analyzing...</span>
+                                            <span id="predictionConfidence">0%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="interpretation-section">
+                                <h3><i class="fas fa-lightbulb"></i> Interpretation</h3>
+                                <div id="interpretationText" class="interpretation-text">
+                                    Upload an image to see the model's focus areas and interpretation.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="loadingIndicator" style="display: none;">
+                            <div class="loading-spinner"></div>
+                            <p>Generating Grad-CAM visualization...</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="gradcam-section">
+                    <h2><i class="fas fa-cogs"></i> Model Selection</h2>
+                    <div class="section-content">
+                        <select id="modelSelect">
+                            <option value="/static/models/model.json">Default Model</option>
+                        </select>
+                        <p class="help-text">Choose which trained model to use for Grad-CAM analysis</p>
+                    </div>
+                </section>
+
+                <section class="gradcam-section">
+                    <h2><i class="fas fa-question-circle"></i> How Grad-CAM Works</h2>
+                    <div class="section-content">
+                        <div class="explanation">
+                            <p><strong>Grad-CAM (Gradient-weighted Class Activation Mapping)</strong> shows which parts of an image are most important for the model's prediction.</p>
+
+                            <div class="steps">
+                                <div class="step">
+                                    <div class="step-number">1</div>
+                                    <div class="step-content">
+                                        <h4>Forward Pass</h4>
+                                        <p>The image passes through the neural network to get predictions</p>
+                                    </div>
+                                </div>
+
+                                <div class="step">
+                                    <div class="step-number">2</div>
+                                    <div class="step-content">
+                                        <h4>Gradient Calculation</h4>
+                                        <p>Gradients are computed with respect to the final convolutional layer</p>
+                                    </div>
+                                </div>
+
+                                <div class="step">
+                                    <div class="step-number">3</div>
+                                    <div class="step-content">
+                                        <h4>Weighted Sum</h4>
+                                        <p>Feature maps are weighted by their gradient importance</p>
+                                    </div>
+                                </div>
+
+                                <div class="step">
+                                    <div class="step-number">4</div>
+                                    <div class="step-content">
+                                        <h4>Visualization</h4>
+                                        <p>The result is upsampled and overlaid on the original image</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 Satellite Pollution Detector - Grad-CAM Visualization</p>
+        </footer>
+    </div>
+
+    <script>
+        const IMG_SIZE = 128;
+        let model = null;
+        let gradModel = null;
+
+        async function initModel() {
+            try {
+                const modelPath = document.getElementById('modelSelect').value;
+                model = await tf.loadLayersModel(modelPath);
+                console.log('Model loaded for Grad-CAM');
+
+                const layerOutputs = [model.getLayer('conv2d_2').output, model.outputs[0]];
+                gradModel = tf.model({inputs: model.inputs, outputs: layerOutputs});
+
+                console.log('Grad-CAM model ready');
+            } catch(e) {
+                console.error('Model load error:', e);
+                alert('Model is initializing... Please wait a moment and try again.');
+            }
+        }
+
+        function preprocessImage(imgElement) {
+            return tf.tidy(() => {
+                let tensor = tf.browser.fromPixels(imgElement);
+                tensor = tf.image.resizeBilinear(tensor, [IMG_SIZE, IMG_SIZE]);
+                tensor = tensor.toFloat().div(255.0);
+                return tensor.expandDims(0);
+            });
+        }
+
+        async function generateGradCAM(imgElement, targetClass = 1) {
+            if (!gradModel) {
+                throw new Error('Model not loaded');
+            }
+
+            return tf.tidy(() => {
+                const imgTensor = preprocessImage(imgElement);
+
+                const [convOutputs, predictions] = tf.grad((input) => {
+                    const [conv, pred] = gradModel.predict(input);
+                    return pred.slice([0, targetClass], [1, 1]);
+                })(imgTensor);
+
+                const weights = tf.mean(convOutputs, [0, 1, 2]);
+
+                let cam = convOutputs.mul(weights);
+                cam = tf.sum(cam, -1);
+
+                cam = tf.relu(cam);
+
+                const maxVal = tf.max(cam);
+                const minVal = tf.min(cam);
+                cam = cam.sub(minVal).div(maxVal.sub(minVal));
+
+                cam = tf.image.resizeBilinear(cam, [imgElement.height, imgElement.width]);
+                cam = cam.squeeze();
+
+                return cam;
+            });
+        }
+
+
+        function createHeatmap(heatmapTensor, width, height) {
+            const heatmapData = heatmapTensor.dataSync();
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+
+            const imageData = ctx.createImageData(width, height);
+
+            for (let i = 0; i < heatmapData.length; i++) {
+                const intensity = heatmapData[i];
+                const x = i % width;
+                const y = Math.floor(i / width);
+
+                const r = Math.floor(intensity * 255);
+                const g = Math.floor(intensity * 100);
+                const b = Math.floor((1 - intensity) * 255);
+
+                const pixelIndex = (y * width + x) * 4;
+                imageData.data[pixelIndex] = r;
+                imageData.data[pixelIndex + 1] = g;
+                imageData.data[pixelIndex + 2] = b;
+                imageData.data[pixelIndex + 3] = 128;
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            return canvas;
+        }
+
+        async function analyzeImage(file) {
+            const loading = document.getElementById('loadingIndicator');
+            const container = document.getElementById('visualizationContainer');
+
+            loading.style.display = 'block';
+            container.style.display = 'none';
+
+            try {
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+
+                await new Promise((resolve) => {
+                    img.onload = resolve;
+                    img.src = url;
+                });
+
+                const originalCanvas = document.getElementById('originalCanvas');
+                const ctx = originalCanvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, 224, 224);
+
+                const imgTensor = preprocessImage(img);
+                const prediction = model.predict(imgTensor);
+                const scores = await prediction.data();
+                const pollutionScore = scores[1];
+                const isPollution = pollutionScore > 0.5;
+                const confidence = isPollution ? pollutionScore : 1 - pollutionScore;
+
+                const predictionFill = document.getElementById('predictionFill');
+                const predictionLabel = document.getElementById('predictionLabel');
+                const predictionConfidence = document.getElementById('predictionConfidence');
+
+                predictionFill.style.width = (confidence * 100) + '%';
+                predictionFill.className = `prediction-fill ${isPollution ? 'polluted' : 'clean'}`;
+                predictionLabel.textContent = isPollution ? 'Pollution Detected' : 'Clean Area';
+                predictionConfidence.textContent = (confidence * 100).toFixed(1) + '%';
+
+                const heatmapTensor = await generateGradCAM(img, 1);
+                const heatmapCanvas = createHeatmap(heatmapTensor, img.width, img.height);
+
+                const heatmapCtx = document.getElementById('heatmapCanvas').getContext('2d');
+                heatmapCtx.drawImage(heatmapCanvas, 0, 0, 224, 224);
+
+                const overlayCanvas = document.getElementById('overlayCanvas');
+                const overlayCtx = overlayCanvas.getContext('2d');
+
+                overlayCtx.drawImage(img, 0, 0, 224, 224);
+
+                overlayCtx.globalAlpha = 0.5;
+                overlayCtx.drawImage(heatmapCanvas, 0, 0, 224, 224);
+                overlayCtx.globalAlpha = 1.0;
+
+                const interpretation = generateInterpretation(isPollution, confidence, heatmapTensor);
+                document.getElementById('interpretationText').innerHTML = interpretation;
+
+                imgTensor.dispose();
+                prediction.dispose();
+                heatmapTensor.dispose();
+                URL.revokeObjectURL(url);
+
+                loading.style.display = 'none';
+                container.style.display = 'block';
+
+            } catch (error) {
+                console.error('Analysis error:', error);
+                alert('Error during analysis: ' + error.message);
+                loading.style.display = 'none';
+            }
+        }
+
+        function generateInterpretation(isPollution, confidence, heatmapTensor) {
+            const heatmapData = heatmapTensor.dataSync();
+            const maxIntensity = Math.max(...heatmapData);
+            const avgIntensity = heatmapData.reduce((a, b) => a + b) / heatmapData.length;
+            const highFocusAreas = heatmapData.filter(x => x > 0.7).length / heatmapData.length;
+
+            let interpretation = `<p>The model ${isPollution ? 'detected pollution' : 'classified this as a clean area'} with ${(confidence * 100).toFixed(1)}% confidence.</p>`;
+
+            if (highFocusAreas > 0.1) {
+                interpretation += `<p><strong>High attention areas:</strong> The model focused intensely on ${(highFocusAreas * 100).toFixed(1)}% of the image, suggesting specific regions of interest.</p>`;
+            }
+
+            if (maxIntensity > 0.8) {
+                interpretation += `<p><strong>Strong focus:</strong> Some areas received very high attention (${(maxIntensity * 100).toFixed(1)}% maximum intensity), indicating key features for the ${isPollution ? 'pollution' : 'clean'} classification.</p>`;
+            }
+
+            if (avgIntensity < 0.3) {
+                interpretation += `<p><strong>Distributed attention:</strong> The model's attention was relatively evenly distributed across the image, suggesting it considered multiple factors in its decision.</p>`;
+            }
+
+            interpretation += `<p><em>This visualization helps explain the model's decision-making process, making AI predictions more interpretable and trustworthy.</em></p>`;
+
+            return interpretation;
+        }
+
+        const dropZone = document.getElementById('gradcamDropZone');
+        const fileInput = document.getElementById('gradcamFileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) analyzeImage(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) analyzeImage(e.target.files[0]);
+        });
+
+        document.getElementById('modelSelect').addEventListener('change', initModel);
+
+        window.addEventListener('load', initModel);
+    </script>
+
+    <style>
+        .gradcam-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+        }
+
+        .gradcam-section {
+            background: rgba(65, 90, 119, 0.4);
+            backdrop-filter: blur(15px);
+            border-radius: var(--border-radius);
+            padding: 30px;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(119, 141, 169, 0.2);
+            transition: var(--transition);
+        }
+
+        .gradcam-section:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .section-content {
+            margin-top: 24px;
+        }
+
+        #gradcamDropZone {
+            border: 2px dashed rgba(119, 141, 169, 0.5);
+            border-radius: var(--border-radius-large);
+            padding: 80px 50px;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+            background: rgba(65, 90, 119, 0.3);
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        #gradcamDropZone::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(0, 184, 148, 0.05), rgba(0, 206, 201, 0.05));
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            border-radius: inherit;
+        }
+
+        #gradcamDropZone:hover, #gradcamDropZone.dragover {
+            border-color: var(--accent-color);
+            background: rgba(0, 184, 148, 0.1);
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: var(--shadow-hover), 0 0 40px rgba(0, 184, 148, 0.2);
+        }
+
+        #gradcamDropZone:hover::before, #gradcamDropZone.dragover::before {
+            opacity: 1;
+        }
+
+        #gradcamFileInput {
+            display: none;
+        }
+
+        .vis-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 30px;
+        }
+
+        .vis-item {
+            background: rgba(65, 90, 119, 0.4);
+            backdrop-filter: blur(10px);
+            border-radius: var(--border-radius);
+            padding: 24px;
+            text-align: center;
+            border: 1px solid rgba(119, 141, 169, 0.2);
+        }
+
+        .vis-item h3 {
+            margin: 0 0 16px 0;
+            color: var(--text-primary);
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .vis-item canvas {
+            max-width: 100%;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-inset);
+            border: 1px solid rgba(119, 141, 169, 0.3);
+        }
+
+        .prediction-display {
+            background: rgba(65, 90, 119, 0.4);
+            backdrop-filter: blur(10px);
+            border-radius: var(--border-radius);
+            padding: 24px;
+            margin-top: 16px;
+            border: 1px solid rgba(119, 141, 169, 0.2);
+        }
+
+        .prediction-bar {
+            background: rgba(45, 55, 72, 0.8);
+            border-radius: 30px;
+            height: 24px;
+            overflow: hidden;
+            margin-bottom: 12px;
+            box-shadow: var(--shadow-inset);
+            border: 1px solid rgba(119, 141, 169, 0.3);
+        }
+
+        .prediction-fill {
+            height: 100%;
+            border-radius: 30px;
+            transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .prediction-fill::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: fillShine 2s ease-in-out infinite;
+        }
+
+        .prediction-fill.polluted {
+            background: var(--gradient-danger);
+            box-shadow: 0 0 20px rgba(214, 48, 49, 0.4);
+        }
+
+        .prediction-fill.clean {
+            background: var(--gradient-accent);
+            box-shadow: 0 0 20px rgba(0, 184, 148, 0.4);
+        }
+
+        .prediction-text {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .interpretation-section {
+            background: rgba(65, 90, 119, 0.4);
+            backdrop-filter: blur(10px);
+            border-radius: var(--border-radius);
+            padding: 24px;
+            margin-top: 24px;
+            border: 1px solid rgba(119, 141, 169, 0.2);
+        }
+
+        .interpretation-text {
+            line-height: 1.7;
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        .interpretation-text strong {
+            color: var(--accent-color);
+            font-weight: 600;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(201, 173, 167, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--accent-color);
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+            box-shadow: 0 0 10px rgba(0, 184, 148, 0.3);
+        }
+
+        #modelSelect {
+            width: 100%;
+            padding: 14px;
+            border: 1px solid rgba(119, 141, 169, 0.3);
+            border-radius: var(--border-radius);
+            background: rgba(65, 90, 119, 0.4);
+            backdrop-filter: blur(10px);
+            color: var(--text-primary);
+            font-size: 1rem;
+            margin-bottom: 12px;
+            transition: var(--transition);
+        }
+
+        #modelSelect:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 20px rgba(0, 184, 148, 0.3);
+        }
+
+        .help-text {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin: 0;
+        }
+
+        .explanation {
+            color: var(--text-primary);
+            line-height: 1.7;
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-top: 24px;
+        }
+
+        .step {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .step-number {
+            background: var(--gradient-accent);
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            flex-shrink: 0;
+            box-shadow: 0 4px 15px rgba(0, 184, 148, 0.4);
+        }
+
+        .step-content h4 {
+            margin: 0 0 8px 0;
+            color: var(--accent-color);
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .step-content p {
+            margin: 0;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .back-link {
+            position: absolute;
+            top: 30px;
+            right: 40px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            padding: 10px 20px;
+            border-radius: 50px;
+            background: rgba(65, 90, 119, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(119, 141, 169, 0.3);
+            transition: var(--transition);
+            z-index: 3;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .back-link::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 184, 148, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .back-link:hover::before {
+            left: 100%;
+        }
+
+        .back-link:hover {
+            background: rgba(0, 184, 148, 0.2);
+            color: var(--accent-color);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 184, 148, 0.3);
+            border-color: var(--accent-color);
+        }
+
+        @media (max-width: 768px) {
+            .gradcam-grid {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+
+            .vis-row {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .steps {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .back-link {
+                position: static;
+                margin-top: 20px;
+                align-self: center;
+            }
+        }
+    </style>
+</body>
+</html>

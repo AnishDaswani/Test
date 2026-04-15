@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Training Dashboard - Satellite Pollution Detector</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-brain"></i> Training Dashboard</h1>
+            <p>Train custom models and manage datasets for pollution detection</p>
+            <a href="/" class="back-link"><i class="fas fa-arrow-left"></i> Back to Analysis</a>
+        </header>
+
+        <main class="main-content">
+            <div class="dashboard-grid">
+                <section class="dashboard-section">
+                    <h2><i class="fas fa-database"></i> Dataset Management</h2>
+                    <div class="section-content">
+                        <button id="createDatasetBtn" class="action-btn">
+                            <i class="fas fa-plus"></i> Create New Dataset
+                        </button>
+
+                        <div id="datasetsList" class="items-list">
+                            {% for dataset in datasets %}
+                            <div class="item-card" data-id="{{ dataset.id }}">
+                                <h3>{{ dataset.name }}</h3>
+                                <p>{{ dataset.description|truncatechars:100 }}</p>
+                                <div class="item-meta">
+                                    <span class="status status-{{ dataset.status }}">{{ dataset.status }}</span>
+                                    <span>{{ dataset.image_count }} images</span>
+                                    <span>{{ dataset.created_at|date:"M d, Y" }}</span>
+                                </div>
+                                <div class="item-actions">
+                                    <button class="btn-small" onclick="viewDataset({{ dataset.id }})">
+                                        <i class="fas fa-eye"></i> View
+                                    </button>
+                                    {% if dataset.status == 'ready' %}
+                                    <button class="btn-small" onclick="startTraining({{ dataset.id }})">
+                                        <i class="fas fa-play"></i> Train
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </section>
+
+
+                <section class="dashboard-section">
+                    <h2><i class="fas fa-cogs"></i> Training Jobs</h2>
+                    <div class="section-content">
+                        <div id="trainingJobsList" class="items-list">
+                            {% for job in training_jobs %}
+                            <div class="item-card job-card" data-id="{{ job.id }}">
+                                <h3>{{ job.name }}</h3>
+                                <p>Dataset: {{ job.dataset.name }}</p>
+                                <div class="item-meta">
+                                    <span class="status status-{{ job.status }}">{{ job.status }}</span>
+                                    <span>{{ job.created_at|date:"M d, Y H:i" }}</span>
+                                </div>
+                                {% if job.status == 'completed' %}
+                                <div class="metrics-preview">
+                                    <div>Accuracy: {{ job.metrics.accuracy|floatformat:1 }}%</div>
+                                    <div>Precision: {{ job.metrics.precision|floatformat:1 }}%</div>
+                                </div>
+                                {% endif %}
+                                <div class="item-actions">
+                                    <button class="btn-small" onclick="viewTrainingResults({{ job.id }})">
+                                        <i class="fas fa-chart-line"></i> Results
+                                    </button>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </section>
+
+                <section class="dashboard-section">
+                    <h2><i class="fas fa-upload"></i> Custom Data Upload</h2>
+                    <div class="section-content">
+                        <form id="customDataForm" enctype="multipart/form-data">
+                            <select id="datasetSelect" name="dataset_id" required>
+                                <option value="">Select Dataset</option>
+                                {% for dataset in datasets %}
+                                <option value="{{ dataset.id }}">{{ dataset.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <div id="imageUploadArea" class="upload-area">
+                                <input type="file" id="customImages" name="images" multiple accept="image/*" required>
+                                <p>Drop images here or click to browse</p>
+                            </div>
+                            <div id="imagePreview" class="image-previews"></div>
+                            <button type="submit" class="action-btn">
+                                <i class="fas fa-upload"></i> Upload Images
+                            </button>
+                        </form>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 Satellite Pollution Detector - Training Dashboard</p>
+        </footer>
+    </div>
+
+    <div id="datasetModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Create New Dataset</h2>
+            <form id="datasetForm">
+                <div class="form-group">
+                    <label for="datasetName">Dataset Name</label>
+                    <input type="text" id="datasetName" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="datasetDesc">Description</label>
+                    <textarea id="datasetDesc" name="description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="bbox">Bounding Box (min_lon, min_lat, max_lon, max_lat)</label>
+                    <input type="text" id="bbox" name="bbox" value="-84.6,33.7,-84.2,34.1" required>
+                </div>
+                <div class="form-group">
+                    <label for="dateRange">Date Range</label>
+                    <input type="text" id="dateRange" name="date_range" value="2024-06-01T00:00:00Z/2024-12-01T23:59:59Z" required>
+                </div>
+                <div class="form-group">
+                    <label for="collections">STAC Collections</label>
+                    <input type="text" id="collections" name="collections" value='["sentinel-2-l2a"]' required>
+                </div>
+                <button type="submit" class="action-btn">Create Dataset</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="trainingModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Start Training Job</h2>
+            <form id="trainingForm">
+                <input type="hidden" id="trainingDatasetId" name="dataset_id">
+                <div class="form-group">
+                    <label for="trainingName">Job Name</label>
+                    <input type="text" id="trainingName" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="epochs">Epochs</label>
+                    <input type="number" id="epochs" name="epochs" value="100" min="10" max="500">
+                </div>
+                <div class="form-group">
+                    <label for="batchSize">Batch Size</label>
+                    <input type="number" id="batchSize" name="batch_size" value="32" min="8" max="128">
+                </div>
+                <div class="form-group">
+                    <label for="learningRate">Learning Rate</label>
+                    <input type="number" id="learningRate" name="learning_rate" value="0.0005" step="0.0001" min="0.00001" max="0.01">
+                </div>
+                <button type="submit" class="action-btn">Start Training</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="resultsModal" class="modal">
+        <div class="modal-content large">
+            <span class="close">&times;</span>
+            <h2>Training Results</h2>
+            <div id="resultsContent">
+                <canvas id="trainingChart"></canvas>
+                <div id="metricsDisplay" class="metrics-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const modals = document.querySelectorAll('.modal');
+        const closeButtons = document.querySelectorAll('.close');
+
+        closeButtons.forEach(btn => {
+            btn.onclick = function() {
+                this.closest('.modal').style.display = 'none';
+            }
+        });
+
+        window.onclick = function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
+            }
+        };
+
+        document.getElementById('createDatasetBtn').onclick = function() {
+            document.getElementById('datasetModal').style.display = 'block';
+        };
+
+        document.getElementById('datasetForm').onsubmit = async function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+
+            try {
+                const response = await fetch('/api/create-dataset/', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        name: formData.get('name'),
+                        description: formData.get('description'),
+                        bbox: formData.get('bbox').split(',').map(x => parseFloat(x.trim())),
+                        date_range: formData.get('date_range'),
+                        collections: JSON.parse(formData.get('collections'))
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('Dataset creation started! Check back in a few minutes.');
+                    document.getElementById('datasetModal').style.display = 'none';
+                    location.reload();
+                }
+            } catch (error) {
+                alert('Error creating dataset: ' + error.message);
+            }
+        };
+
+        function startTraining(datasetId) {
+            document.getElementById('trainingDatasetId').value = datasetId;
+            document.getElementById('trainingModal').style.display = 'block';
+        }
+
+        document.getElementById('trainingForm').onsubmit = async function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+
+            try {
+                const response = await fetch('/api/start-training/', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        name: formData.get('name'),
+                        dataset_id: formData.get('dataset_id'),
+                        epochs: parseInt(formData.get('epochs')),
+                        batch_size: parseInt(formData.get('batch_size')),
+                        learning_rate: parseFloat(formData.get('learning_rate'))
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('Training started! This may take several minutes.');
+                    document.getElementById('trainingModal').style.display = 'none';
+                    location.reload();
+                }
+            } catch (error) {
+                alert('Error starting training: ' + error.message);
+            }
+        };
+
+        async function viewTrainingResults(jobId) {
+            try {
+                const response = await fetch(`/api/training-status/${jobId}/`);
+                const data = await response.json();
+
+                if (data.status === 'completed') {
+                    document.getElementById('resultsModal').style.display = 'block';
+
+                    const ctx = document.getElementById('trainingChart').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.metrics.training_history.loss.map((_, i) => i + 1),
+                            datasets: [{
+                                label: 'Training Loss',
+                                data: data.metrics.training_history.loss,
+                                borderColor: 'rgb(255, 99, 132)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                            }, {
+                                label: 'Validation Loss',
+                                data: data.metrics.training_history.val_loss,
+                                borderColor: 'rgb(54, 162, 235)',
+                                backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                y: {
+                                    beginAtZero: false
+                                }
+                            }
+                        }
+                    });
+
+                    const metricsDiv = document.getElementById('metricsDisplay');
+                    metricsDiv.innerHTML = `
+                        <div class="metric-card">
+                            <h3>Accuracy</h3>
+                            <div class="metric-value">${(data.metrics.accuracy * 100).toFixed(1)}%</div>
+                        </div>
+                        <div class="metric-card">
+                            <h3>Precision</h3>
+                            <div class="metric-value">${(data.metrics.precision * 100).toFixed(1)}%</div>
+                        </div>
+                        <div class="metric-card">
+                            <h3>Recall</h3>
+                            <div class="metric-value">${(data.metrics.recall * 100).toFixed(1)}%</div>
+                        </div>
+                        <div class="metric-card">
+                            <h3>Pollution Detection Rate</h3>
+                            <div class="metric-value">${(data.metrics.pollution_rate * 100).toFixed(1)}%</div>
+                        </div>
+                    `;
+                } else {
+                    alert(`Training job status: ${data.status}`);
+                }
+            } catch (error) {
+                alert('Error loading results: ' + error.message);
+            }
+        }
+
+        document.getElementById('customImages').onchange = function(e) {
+            const preview = document.getElementById('imagePreview');
+            preview.innerHTML = '';
+
+            Array.from(e.target.files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const div = document.createElement('div');
+                    div.className = 'image-preview-item';
+                    div.innerHTML = `
+                        <img src="${e.target.result}" alt="Preview">
+                        <select name="labels">
+                            <option value="clean">Clean</option>
+                            <option value="polluted">Polluted</option>
+                        </select>
+                    `;
+                    preview.appendChild(div);
+                };
+                reader.readAsDataURL(file);
+            });
+        };
+
+        document.getElementById('customDataForm').onsubmit = async function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+
+            const labels = Array.from(document.querySelectorAll('#imagePreview select')).map(s => s.value);
+            labels.forEach(label => formData.append('labels', label));
+
+            try {
+                const response = await fetch('/api/upload-custom-images/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert(`Successfully uploaded ${result.uploaded} images!`);
+                    this.reset();
+                    document.getElementById('imagePreview').innerHTML = '';
+                }
+            } catch (error) {
+                alert('Error uploading images: ' + error.message);
+            }
+        };
+    </script>
+
+    <style>
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+        }
+
+        .dashboard-section {
+            background: rgba(65, 90, 119, 0.4);
+            backdrop-filter: blur(15px);
+            border-radius: var(--border-radius);
+            padding: 30px;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(119, 141, 169, 0.2);
+            transition: var(--transition);
+        }
+
+        .dashboard-section:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .section-content {
+            margin-top: 24px;
+        }
+
+        .action-btn {
+            background: var(--gradient-accent);
+            color: var(--text-primary);
+            border: none;
+            padding: 14px 28px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: var(--transition);
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+            position: relative;
+            overflow: hidden;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .action-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.6s;
+        }
+
+        .action-btn:hover::before {
+            left: 100%;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(0, 184, 148, 0.4);
+        }
+
+        .items-list {
+            display: grid;
+            gap: 20px;
+        }
+
+        .item-card {
+            background: rgba(65, 90, 119, 0.4);
+            backdrop-filter: blur(10px);
+            border-radius: var(--border-radius);
+            padding: 24px;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(119, 141, 169, 0.2);
+            transition: var(--transition);
+        }
+
+        .item-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .item-card h3 {
+            margin: 0 0 12px 0;
+            color: var(--text-primary);
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .item-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            margin: 12px 0;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-ready { background: var(--success-color); color: white; box-shadow: 0 0 10px rgba(0, 184, 148, 0.3); }
+        .status-loading { background: var(--accent-color); color: white; box-shadow: 0 0 10px rgba(0, 184, 148, 0.3); }
+        .status-pending { background: var(--text-muted); color: white; }
+        .status-error { background: var(--danger-color); color: white; box-shadow: 0 0 10px rgba(214, 48, 49, 0.3); }
+        .status-training { background: var(--warning-color); color: white; box-shadow: 0 0 10px rgba(253, 203, 110, 0.3); }
+        .status-completed { background: var(--success-color); color: white; box-shadow: 0 0 10px rgba(0, 184, 148, 0.3); }
+        .status-failed { background: var(--danger-color); color: white; box-shadow: 0 0 10px rgba(214, 48, 49, 0.3); }
+
+        .item-actions {
+            margin-top: 16px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn-small {
+            background: var(--gradient-accent);
+            color: var(--text-primary);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-small:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 184, 148, 0.3);
+        }
+
+        .metrics-preview {
+            background: rgba(65, 90, 119, 0.3);
+            padding: 12px;
+            border-radius: var(--border-radius);
+            margin: 12px 0;
+            font-size: 0.9rem;
+            border: 1px solid rgba(119, 141, 169, 0.2);
+        }
+
+        .upload-area {
+            border: 2px dashed rgba(119, 141, 169, 0.5);
+            border-radius: var(--border-radius);
+            padding: 50px 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+            background: rgba(65, 90, 119, 0.2);
+            backdrop-filter: blur(10px);
+            margin: 24px 0;
+        }
+
+        .upload-area:hover {
+            border-color: var(--accent-color);
+            background: rgba(0, 184, 148, 0.1);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 184, 148, 0.2);
+        }
+
+        .image-previews {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 16px;
+            margin: 24px 0;
+        }
+
+        .image-preview-item {
+            background: rgba(65, 90, 119, 0.4);
+            backdrop-filter: blur(10px);
+            border-radius: var(--border-radius);
+            padding: 12px;
+            text-align: center;
+            border: 1px solid rgba(119, 141, 169, 0.2);
+        }
+
+        .image-preview-item img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            border-radius: var(--border-radius);
+            margin-bottom: 12px;
+            border: 1px solid rgba(119, 141, 169, 0.3);
+        }
+
+        .image-preview-item select {
+            width: 100%;
+            padding: 8px;
+            border-radius: var(--border-radius);
+            border: 1px solid rgba(119, 141, 169, 0.3);
+            background: rgba(65, 90, 119, 0.4);
+            backdrop-filter: blur(10px);
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            transition: var(--transition);
+        }
+
+        .image-preview-item select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 20px rgba(0, 184, 148, 0.3);
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(13, 27, 42, 0.8);
+            backdrop-filter: blur(10px);
+        }
+
+        .modal-content {
+            background: rgba(27, 38, 59, 0.95);
+            backdrop-filter: blur(20px);
+            margin: 5% auto;
+            padding: 40px;
+            border-radius: var(--border-radius-large);
+            width: 90%;
+            max-width: 700px;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(119, 141, 169, 0.2);
+        }
+
+        .modal-content.large {
+            max-width: 1100px;
+        }
+
+        .close {
+            color: var(--text-muted);
+            float: right;
+            font-size: 32px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-bottom: 20px;
+        }
+
+        .close:hover {
+            color: var(--accent-color);
+            transform: scale(1.1);
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 14px;
+            border: 1px solid rgba(119, 141, 169, 0.3);
+            border-radius: var(--border-radius);
+            background: rgba(65, 90, 119, 0.4);
+            backdrop-filter: blur(10px);
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 20px rgba(0, 184, 148, 0.3);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 24px;
+            margin-top: 30px;
+        }
+
+        .metric-card {
+            background: rgba(65, 90, 119, 0.4);
+            backdrop-filter: blur(10px);
+            padding: 24px;
+            border-radius: var(--border-radius);
+            text-align: center;
+            border: 1px solid rgba(119, 141, 169, 0.2);
+            transition: var(--transition);
+        }
+
+        .metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .metric-card h3 {
+            margin: 0 0 12px 0;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--accent-color);
+            margin: 0;
+            text-shadow: 0 2px 4px rgba(0, 184, 148, 0.3);
+        }
+
+        .back-link {
+            position: absolute;
+            top: 30px;
+            right: 40px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            padding: 10px 20px;
+            border-radius: 50px;
+            background: rgba(65, 90, 119, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(119, 141, 169, 0.3);
+            transition: var(--transition);
+            z-index: 3;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .back-link::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 184, 148, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .back-link:hover::before {
+            left: 100%;
+        }
+
+        .back-link:hover {
+            background: rgba(0, 184, 148, 0.2);
+            color: var(--accent-color);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 184, 148, 0.3);
+            border-color: var(--accent-color);
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+
+            .modal-content {
+                margin: 10% auto;
+                padding: 25px;
+            }
+
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .back-link {
+                position: static;
+                margin-top: 20px;
+                align-self: center;
+            }
+
+            .item-meta {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+            }
+        }
+    </style>
+</body>
+</html>
