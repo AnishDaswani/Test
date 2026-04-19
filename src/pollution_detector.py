@@ -68,7 +68,7 @@ def load_previews(collections, bbox, date_range):
     if not imgs:
         raise RuntimeError("No preview images found.")
     return np.stack(imgs)
-
+ # AI -------------------------------------------------------
 def pollution_proxy_labels(X, percentile_thresh=40):
     x = tf.cast(X, tf.float32) / 255.0
 
@@ -105,7 +105,7 @@ def pollution_proxy_labels(X, percentile_thresh=40):
     y = (pollution_score > thresh).astype(np.int64)
 
     return y, pollution_score
-
+#------------------------------------------------------------------
 def build_model():
     model = tf.keras.Sequential([
         tf.keras.layers.Input(shape=(*IMG_SIZE,3)),

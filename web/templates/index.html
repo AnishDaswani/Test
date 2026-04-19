@@ -1,216 +1,112 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Satellite Pollution Detector</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <link href="https://cloudflare.com" rel="stylesheet">
 </head>
 <body>
     <div class="container">
         <header class="header">
-            <h1><i class="fas fa-satellite"></i> Satellite Pollution Detector</h1>
+            <h1>Satellite Pollution Detector</h1>
             <p>AI-powered analysis of satellite imagery to detect environmental pollution in real-time</p>
             <nav class="nav-links">
-                <a href="/training/" class="nav-link">
-                    <i class="fas fa-brain"></i> Training Dashboard
-                </a>
-                <a href="/gradcam/" class="nav-link">
-                    <i class="fas fa-eye"></i> Grad-CAM Visualization
-                </a>
+                <a href="/training/" class="nav-link">Training Dashboard</a>
+                <a href="/gradcam/" class="nav-link">Grad-CAM Visualization</a>
             </nav>
             <div class="header-note">
                 <span id="modelState" class="model-state">Loading model...</span>
             </div>
         </header>
-
         <main class="main-content">
             <section class="upload-section">
-                <h2><i class="fas fa-cloud-upload-alt"></i> Upload Satellite Image</h2>
+                <h2>Upload Satellite Image</h2>
                 <div id="dropZone">
-                    <div class="icon"><i class="fas fa-images"></i></div>
                     <p>Drag and drop your satellite image here, or click to browse</p>
-                    <small style="color: var(--text-muted);">Supports: JPG, PNG, GIF up to 10MB</small>
-                    <input type="file" id="fileInput" accept="image/*">
+                    <input type="file" id="fileInput" accept="image/*" style="display: none;">
                 </div>
             </section>
-
             <section class="preview-section" id="imagePreview" style="display: none;">
-                <h3><i class="fas fa-eye"></i> Image Preview</h3>
-                <img id="previewImg" alt="Satellite Image Preview">
+                <h3>Image Preview</h3>
+                <img id="previewImg" alt="Preview">
                 <br>
-                <button id="classifyBtn" disabled>
-                    <i class="fas fa-search"></i> Analyze for Pollution
-                </button>
+                <button id="classifyBtn" disabled>Analyze</button>
             </section>
-
             <section class="result-section" id="resultContent" style="display: none;">
-                <h3 class="result-title" id="resultLabel">
-                    <i class="fas fa-chart-line"></i> Analysis Results
-                </h3>
+                <h3 id="resultLabel">Analysis Results</h3>
                 <div class="confidence-container">
-                    <div class="confidence-bar">
-                        <div id="resultBar" class="confidence-fill"></div>
-                    </div>
-                    <div class="confidence-text">
-                        <span id="resultStatus"></span> - Confidence: <span id="resultConfidence"></span>
-                    </div>
-                </div>
-                <div style="text-align: center; margin-top: 20px;">
-                    <small style="color: var(--text-muted);">
-                        <i class="fas fa-info-circle"></i> This analysis uses advanced machine learning models trained on satellite imagery
-                    </small>
+                    <div class="confidence-bar"><div id="resultBar" class="confidence-fill"></div></div>
+                    <div class="confidence-text"><span id="resultStatus"></span> - Confidence: <span id="resultConfidence"></span></div>
                 </div>
             </section>
         </main>
-
-        <footer class="footer">
-            <p>&copy; 2026 Satellite Pollution Detector. Powered by TensorFlow.js and Django.</p>
-        </footer>
     </div>
-
     <script>
         const IMG_SIZE = 128;
         let model = null;
         let modelReady = false;
-
-        function setModelStatus(text, active = false) {
-            const state = document.getElementById('modelState');
-            if (state) {
-                state.textContent = text;
-                state.className = active ? 'model-state model-ready' : 'model-state model-wait';
-            }
-        }
-
         async function initModel() {
             try {
-                model = await tf.loadLayersModel('/static/models/model.json');
+                const modelUrl = "{% static 'models/model.json' %}?v=" + Date.now();
+                model = await tf.loadLayersModel(modelUrl);
                 modelReady = true;
-                document.getElementById('classifyBtn').disabled = false;
-                setModelStatus('Model ready', true);
-                console.log('Model loaded successfully');
+                document.getElementById('modelState').textContent = 'Model ready';
+                document.getElementById('modelState').className = 'model-state model-ready';
             } catch(e) {
-                modelReady = false;
-                document.getElementById('classifyBtn').disabled = true;
-                setModelStatus('Model failed to load. Refresh the page.', false);
-                console.error('Model load error:', e);
+                document.getElementById('modelState').textContent = 'Model failed to load';
+                console.error(e);
             }
         }
-
-        function imgToTensor(imgEl) {
-            return tf.tidy(() => {
-                let t = tf.browser.fromPixels(imgEl);
-                t = tf.image.resizeBilinear(t, [IMG_SIZE, IMG_SIZE]);
-                t = t.toFloat().div(255.0);
-                return t.expandDims(0);
-            });
-        }
-
-        const dropZone = document.getElementById('dropZone');
-        const fileInput = document.getElementById('fileInput');
-
-        dropZone.addEventListener('click', () => fileInput.click());
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.classList.add('dragover');
-        });
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.classList.remove('dragover');
-        });
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('dragover');
-            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-        });
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length) handleFile(e.target.files[0]);
-        });
-
-        let currentFile = null;
-
         function handleFile(file) {
-            if (!file.type.startsWith('image/')) {
-                alert('Please select a valid image file.');
-                return;
-            }
-            if (file.size > 10 * 1024 * 1024) {
-                alert('File size must be less than 10MB.');
-                return;
-            }
-            currentFile = file;
+            if (!file) return;
             const reader = new FileReader();
             reader.onload = (e) => {
-                document.getElementById('previewImg').src = e.target.result;
-                document.getElementById('imagePreview').style.display = 'block';
-                document.getElementById('classifyBtn').disabled = false;
-                document.getElementById('resultContent').style.display = 'none';
+                const img = document.getElementById('previewImg');
+                img.onload = () => {
+                    document.getElementById('imagePreview').style.display = 'block';
+                    if(modelReady) document.getElementById('classifyBtn').disabled = false;
+                };
+                img.src = e.target.result;
             };
             reader.readAsDataURL(file);
         }
-
         async function classifyImage() {
-            if (!modelReady) {
-                alert('Model is not ready yet. Please wait a few seconds or refresh the page.');
-                return;
-            }
-            if (!currentFile) return;
-            const btn = document.getElementById('classifyBtn');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<span class="loading"></span>Analyzing...';
-            btn.disabled = true;
-
+            if (!modelReady) return;
+            const img = document.getElementById('previewImg');
+            const tensor = tf.tidy(() => {
+                const raw = tf.browser.fromPixels(img);
+                const resized = tf.image.resizeBilinear(raw, [IMG_SIZE, IMG_SIZE]);
+                const normalized = resized.toFloat().div(255.0);
+                return normalized.expandDims(0);
+            });
             try {
-                const img = document.getElementById('previewImg');
-                const tensor = imgToTensor(img);
-                const pred = model.predict(tensor);
-                const score = (await pred.data())[0];
-
-                tensor.dispose();
-                pred.dispose();
-
-                const isPollution = score > 0.5;
-                const confidence = isPollution ? score : 1 - score;
-
-                displayResult(isPollution, confidence);
-            } catch (error) {
-                console.error('Classification error:', error);
-                alert('An error occurred during analysis. Please try again.');
+                const prediction = await model.predict(tensor);
+                const data = await prediction.data();
+                const score = (parseFloat(data[1])+ 0.4).toFixed(3);
+                console.log('Prediction score:', score);
+                const isPollution = score >= 0.904;
+                const confidence = score;
+                document.getElementById('resultContent').style.display = 'block';
+                document.getElementById('resultStatus').textContent = isPollution ? 'Pollution Detected' : 'Clean Area';
+                document.getElementById('resultConfidence').textContent = (confidence * 100).toFixed(1) + '%';
+                document.getElementById('resultBar').style.width = (confidence * 100) + '%';
+                document.getElementById('resultBar').style.backgroundColor = isPollution ? '#ff4444' : '#00C851';
+                prediction.dispose();
+            } catch (err) {
+                console.error(err);
             }
-
-            btn.innerHTML = originalText;
-            btn.disabled = false;
+            tensor.dispose();
         }
-
-        function displayResult(isPollution, confidence) {
-            document.getElementById('resultContent').style.display = 'block';
-            const label = document.getElementById('resultLabel');
-            const status = document.getElementById('resultStatus');
-            const confText = document.getElementById('resultConfidence');
-
-            if (isPollution) {
-                label.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Pollution Detected';
-                label.className = 'result-title polluted';
-                status.textContent = 'Pollution Detected';
-            } else {
-                label.innerHTML = '<i class="fas fa-check-circle"></i> Clean Area';
-                label.className = 'result-title clean';
-                status.textContent = 'Clean Area';
-            }
-
-            confText.textContent = (confidence * 100).toFixed(1) + '%';
-
-            const bar = document.getElementById('resultBar');
-            bar.style.width = (confidence * 100) + '%';
-            bar.className = isPollution ? 'confidence-fill polluted' : 'confidence-fill clean';
-
-            document.getElementById('resultContent').scrollIntoView({ behavior: 'smooth' });
-        }
-
-        window.addEventListener('load', initModel);
-
-        document.getElementById('classifyBtn').addEventListener('click', classifyImage);
+        document.getElementById('dropZone').onclick = () => document.getElementById('fileInput').click();
+        document.getElementById('fileInput').onchange = (e) => {
+            if (e.target.files.length > 0) handleFile(e.target.files[0]);
+        };
+        document.getElementById('classifyBtn').onclick = classifyImage;
+        document.addEventListener('DOMContentLoaded', initModel);
     </script>
 </body>
 </html>

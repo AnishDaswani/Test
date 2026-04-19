@@ -76,7 +76,7 @@ try:
     X_all = load_previews(PRIMARY_COLLECTIONS)
 except:
     X_all = load_previews(FALLBACK_COLLECTIONS)
-
+# AI PART--------------------------------------------------------------
 def pollution_proxy_labels(X, percentile_thresh=40):
     x = tf.cast(X, tf.float32) / 255.0
     
@@ -112,7 +112,7 @@ def pollution_proxy_labels(X, percentile_thresh=40):
     y = (pollution_score > thresh).astype(np.int64)
     
     return y, pollution_score
-
+#-----------------------------------------------------------------------------
 y_all, scores = pollution_proxy_labels(X_all, POLLUTION_LABEL_THRESHOLD)
 
 print(f"Loaded {len(X_all)} images")

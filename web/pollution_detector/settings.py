@@ -1,10 +1,13 @@
 import os
 from pathlib import Path
+import mimetypes
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-change-this-in-production'
+
 DEBUG = True
+
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
@@ -46,13 +49,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'pollution_detector.wsgi.application'
 
-STATIC_URL = '/static/'
-STATICFILES_DIRS = [BASE_DIR / 'static']
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -65,7 +61,19 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
+STATIC_URL = 'static/'
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-MODEL_PATH = BASE_DIR / 'earthsearch_harsh_pollution_model.keras'
+mimetypes.add_type("application/javascript", ".js", True)
+mimetypes.add_type("application/json", ".json", True)
+
+MODEL_PATH = BASE_DIR.parent / 'models' / 'earthsearch_harsh_pollution_model.keras'
 IMG_SIZE = 224

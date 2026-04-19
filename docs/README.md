@@ -17,5 +17,5 @@ pip install -r requirements.txt
 2. Run:
 
 ```powershell
-py scripts\combined.py
+py scripts\combined.py runserver
 ```

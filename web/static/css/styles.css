@@ -1,5 +1,5 @@
-/* Human-Crafted Environmental Theme for Satellite Pollution Detector */
 
+/* AI */
 :root {
     --primary-bg: #0a141e; /* Darker deep ocean blue */
     --secondary-bg: #141d2b; /* Darker slate */
@@ -24,7 +24,7 @@
     --border-radius-large: 24px;
     --transition: all 0.3s ease;
 }
-
+/* fin ai */
 .nav-links {
     position: absolute;
     top: 30px;
@@ -409,11 +409,6 @@ body::before {
     justify-content: center;
     align-items: center;
     gap: 8px;
-}
-
-.confidence-text::before {
-    content: '🎯';
-    font-size: 1.2rem;
 }
 
 .loading {
